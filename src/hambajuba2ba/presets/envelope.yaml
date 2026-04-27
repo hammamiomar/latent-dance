@@ -1,0 +1,54 @@
+# Envelope presets for asymmetric attack/release smoothing
+#
+# Time constants are in milliseconds. The ratio of release/attack
+# determines how "punchy" (low ratio) vs "sustained" (high ratio)
+# the response feels.
+#
+# Human perception is asymmetric: we notice sudden changes immediately
+# but perceive decay as gradual. Fast attack captures transients,
+# slow release creates organic decay.
+
+# Drums: ultra-fast attack captures transients, moderate release
+drums:
+  attack_ms: 2.0
+  release_ms: 100.0
+
+drums_low:
+  attack_ms: 5.0
+  release_ms: 150.0  # Kick: slightly slower attack
+
+drums_mid:
+  attack_ms: 2.0
+  release_ms: 90.0   # Snare: punchy crack
+
+drums_high:
+  attack_ms: 1.0
+  release_ms: 80.0   # Hats: crisp, ultra-fast
+
+# Bass: moderate attack (bass doesn't "snap"), slow release for weight
+bass:
+  attack_ms: 10.0
+  release_ms: 200.0
+
+# Vocals: balanced for musical phrasing
+vocals:
+  attack_ms: 15.0
+  release_ms: 150.0
+
+# Other: default balanced response
+other:
+  attack_ms: 10.0
+  release_ms: 150.0
+
+other_mid:
+  attack_ms: 10.0
+  release_ms: 150.0
+
+other_high:
+  attack_ms: 5.0
+  release_ms: 100.0
+
+# Default fallback
+default:
+  attack_ms: 5.0
+  release_ms: 150.0

@@ -1,0 +1,1524 @@
+/**
+ * HAMBAJUBA - Win95 Retro + Earthy Green Aesthetic
+ *
+ * Transparent glass panels. 3D beveled borders. Space Mono.
+ * Canvas is the star. 3D alien mascot controls the player.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* ========================================
+   * Typography - Space Mono Terminal
+   * ======================================== */
+  --font-mono: "Space Mono", "SF Mono", "Monaco", monospace;
+
+  /* ========================================
+   * Void - Deep earthy blacks with brown/green
+   * ======================================== */
+  --color-void-abyss: #08090a;
+  --color-void-deep: #0c0e0d;
+  --color-void-mid: #131614;
+  --color-void-surface: #1a1e1b;
+  --color-void-elevated: #232823;
+
+  /* ========================================
+   * Panel - Semi-transparent with blur
+   * ======================================== */
+  --color-panel-bg: rgba(19, 22, 20, 0.88);
+  --color-panel-bg-solid: #131614;
+  --color-panel-border: #2a302a;
+  --color-panel-border-active: #3a423a;
+
+  /* ========================================
+   * Win95 3D Border Colors (muted earth)
+   * ======================================== */
+  --color-win95-light: #3d453d;
+  --color-win95-dark: #161a16;
+  --color-win95-face: #252a25;
+
+  /* ========================================
+   * Stems - Muted, earthy variants
+   * ======================================== */
+  --color-stem-bass: #c45a2a;
+  --color-stem-drums: #a84070;
+  --color-stem-vocals: #4a9eb0;
+  --color-stem-other: #5a8a4a;
+
+  /* ========================================
+   * Text - Muted contrast
+   * ======================================== */
+  --color-text-primary: #d0d4cc;
+  --color-text-muted: #6a7268;
+  --color-text-dim: #3a403a;
+
+  /* ========================================
+   * Accent - Dark forest green (muted)
+   * ======================================== */
+  --color-accent: #4a8a4a;
+  --color-accent-dim: #2a4a2a;
+  --color-accent-glow: rgba(74, 138, 74, 0.25);
+  --color-success: #5a9a5a;
+  --color-warning: #b8a040;
+  --color-error: #a84040;
+
+  /* ========================================
+   * Typography Scale (compact UI)
+   * ======================================== */
+  --text-xxs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-lg: 14px;
+
+  /* ========================================
+   * Tracking (letter-spacing)
+   * ======================================== */
+  --tracking-wide: 0.05em;
+  --tracking-wider: 0.1em;
+}
+
+/* ============================================================================
+ * Reset
+ * ============================================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--color-void-abyss);
+  color: var(--color-text-primary);
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================================
+ * Win95 Panels - 3D beveled borders with transparency
+ * ============================================================================ */
+
+.win95-panel {
+  background: var(--color-panel-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 2px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark) var(--color-win95-dark) var(--color-win95-light);
+  box-shadow:
+    inset 1px 1px 0 var(--color-win95-light),
+    inset -1px -1px 0 var(--color-win95-dark),
+    0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.win95-panel--solid {
+  background: var(--color-panel-bg-solid);
+  backdrop-filter: none;
+}
+
+/* Win95 Title Bar */
+.win95-title-bar {
+  background: linear-gradient(90deg, var(--color-accent-dim), var(--color-void-mid));
+  padding: 4px 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: grab;
+  user-select: none;
+  gap: 8px;
+}
+
+.win95-title-bar:active {
+  cursor: grabbing;
+}
+
+.win95-title-bar__text {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.win95-title-bar__buttons {
+  display: flex;
+  gap: 2px;
+}
+
+/* Win95 Title Bar Buttons (minimize, maximize, close) */
+.win95-title-btn {
+  width: 16px;
+  height: 14px;
+  background: var(--color-win95-face);
+  border: 1px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark) var(--color-win95-dark) var(--color-win95-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.win95-title-btn:hover {
+  background: var(--color-void-elevated);
+}
+
+.win95-title-btn:active {
+  border-color: var(--color-win95-dark) var(--color-win95-light) var(--color-win95-light) var(--color-win95-dark);
+}
+
+/* ============================================================================
+ * Win95 Buttons - 3D beveled
+ * ============================================================================ */
+
+.win95-button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  padding: 4px 12px;
+  background: var(--color-win95-face);
+  border: 2px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark) var(--color-win95-dark) var(--color-win95-light);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: none;
+}
+
+.win95-button:hover {
+  background: var(--color-void-elevated);
+}
+
+.win95-button:active {
+  border-color: var(--color-win95-dark) var(--color-win95-light) var(--color-win95-light) var(--color-win95-dark);
+  padding: 5px 11px 3px 13px; /* Shift content on press */
+}
+
+.win95-button--primary {
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent) var(--color-win95-dark) var(--color-win95-dark) var(--color-accent);
+}
+
+.win95-button--primary:hover {
+  background: var(--color-accent);
+  color: var(--color-void-deep);
+}
+
+.win95-button--icon {
+  padding: 4px;
+  min-width: 24px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================================================
+ * Win95 Inset Fields (text inputs, displays)
+ * ============================================================================ */
+
+.win95-inset {
+  background: var(--color-void-deep);
+  border: 2px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light) var(--color-win95-light) var(--color-win95-dark);
+  padding: 4px 6px;
+}
+
+.win95-inset input,
+.win95-inset textarea {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  width: 100%;
+}
+
+.win95-inset input::placeholder,
+.win95-inset textarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+/* ============================================================================
+ * Win95 Slider/Fader
+ * ============================================================================ */
+
+.win95-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--color-void-deep);
+  border: 1px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light) var(--color-win95-light) var(--color-win95-dark);
+  cursor: pointer;
+}
+
+.win95-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 21px;
+  background: var(--color-win95-face);
+  border: 2px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark) var(--color-win95-dark) var(--color-win95-light);
+  cursor: grab;
+}
+
+.win95-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  border-color: var(--color-win95-dark) var(--color-win95-light) var(--color-win95-light) var(--color-win95-dark);
+}
+
+.win95-slider::-moz-range-thumb {
+  width: 11px;
+  height: 21px;
+  background: var(--color-win95-face);
+  border: 2px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark) var(--color-win95-dark) var(--color-win95-light);
+  cursor: grab;
+}
+
+/* Vertical slider */
+.win95-slider--vertical {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 21px;
+  height: 80px;
+}
+
+/* ============================================================================
+ * Win95 Select/Dropdown
+ * ============================================================================ */
+
+.win95-select {
+  width: 100%;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--color-void-deep);
+  color: var(--color-text-primary);
+  border: 2px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light) var(--color-win95-light) var(--color-win95-dark);
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'%3E%3Cpath fill='%236a7268' d='M0 0l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+}
+
+.win95-select:hover {
+  background-color: var(--color-void-mid);
+}
+
+.win95-select:focus {
+  border-color: var(--color-accent) var(--color-win95-light) var(--color-win95-light) var(--color-accent);
+}
+
+.win95-select option {
+  background: var(--color-void-deep);
+  color: var(--color-text-primary);
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+}
+
+.win95-select option:hover,
+.win95-select option:focus {
+  background: var(--color-accent-dim);
+}
+
+/* ============================================================================
+ * CRT Scanline Effect
+ * ============================================================================ */
+
+.crt-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  z-index: 9999;
+}
+
+/* ============================================================================
+ * Noise Texture
+ * ============================================================================ */
+
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  z-index: 9998;
+}
+
+/* ============================================================================
+ * Dither Overlay - Ordered dithering pattern (Bayer matrix)
+ * ============================================================================ */
+
+.dither-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9997;
+  mix-blend-mode: multiply;
+  opacity: 0.15;
+  /* 4x4 Bayer dither pattern using CSS gradient */
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 1px,
+      rgba(0, 0, 0, 0.4) 1px, rgba(0, 0, 0, 0.4) 2px,
+      transparent 2px, transparent 3px,
+      rgba(0, 0, 0, 0.2) 3px, rgba(0, 0, 0, 0.2) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 1px,
+      rgba(0, 0, 0, 0.3) 1px, rgba(0, 0, 0, 0.3) 2px,
+      transparent 2px, transparent 3px,
+      rgba(0, 0, 0, 0.1) 3px, rgba(0, 0, 0, 0.1) 4px
+    );
+  background-size: 4px 4px;
+}
+
+/* ============================================================================
+ * Perf Overlay (Diagnostics)
+ * ============================================================================ */
+
+.perf-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10001;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.7);
+  color: #e6e6e6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 160px;
+}
+
+.perf-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.perf-gap {
+  height: 6px;
+}
+
+.perf-label {
+  color: #bdbdbd;
+}
+
+.perf-value {
+  color: #ffffff;
+}
+
+/* ============================================================================
+ * Stem Colors (CSS custom properties)
+ * ============================================================================ */
+
+[data-stem="bass"] { --stem-color: var(--color-stem-bass); }
+[data-stem="drums"] { --stem-color: var(--color-stem-drums); }
+[data-stem="vocals"] { --stem-color: var(--color-stem-vocals); }
+[data-stem="other"] { --stem-color: var(--color-stem-other); }
+
+/* ============================================================================
+ * Animations
+ * ============================================================================ */
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes panelFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+/* ============================================================================
+ * Scrollbar - Minimal
+ * ============================================================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-void-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-panel-border);
+  border: 1px solid var(--color-win95-dark);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-panel-border-active);
+}
+
+/* ============================================================================
+ * Utility Classes
+ * ============================================================================ */
+
+.font-mono { font-family: var(--font-mono); }
+
+
+/* Selection */
+::selection {
+  background: var(--color-accent);
+  color: var(--color-void-deep);
+}
+
+/* Focus visible */
+:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+ * CrystalHeart
+ * ============================================================================ */
+
+.crystal-heart {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.crystal-heart canvas {
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: auto;
+}
+
+.crystal-heart__glow {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* ============================================================================
+ * Link Target Category Colors
+ * ============================================================================ */
+
+.link-target--physical { color: var(--color-text-primary); }
+.link-target--hpss { color: #5aaa7a; }
+.link-target--subband { color: #7a9aaa; }
+.link-target--derived { color: #c9a040; }
+
+/* Category indicator dots */
+.link-target-dot--physical { background: var(--color-text-primary); }
+.link-target-dot--hpss { background: #5aaa7a; }
+.link-target-dot--subband { background: #7a9aaa; }
+.link-target-dot--derived { background: #c9a040; }
+
+/* ============================================================================
+ * Strength Range Dual Slider
+ * ============================================================================ */
+
+.strength-range {
+  position: relative;
+  height: 24px;
+}
+
+.strength-range__track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  background: var(--color-void-deep);
+  border: 1px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light)
+               var(--color-win95-light) var(--color-win95-dark);
+}
+
+.strength-range__fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(90deg,
+    var(--color-accent-dim) 0%,
+    var(--color-accent) 100%
+  );
+  box-shadow: 0 0 8px var(--color-accent-glow);
+}
+
+.strength-range__thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  background: var(--color-win95-face);
+  border: 2px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark)
+               var(--color-win95-dark) var(--color-win95-light);
+  cursor: grab;
+  z-index: 2;
+}
+
+.strength-range__thumb:active {
+  cursor: grabbing;
+  border-color: var(--color-win95-dark) var(--color-win95-light)
+               var(--color-win95-light) var(--color-win95-dark);
+}
+
+/* ============================================================================
+ * Focus Weight Dial
+ * ============================================================================ */
+
+.focus-dial {
+  width: 72px;
+  height: 72px;
+  position: relative;
+  cursor: pointer;
+}
+
+.focus-dial__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--color-void-deep);
+  border: 2px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light)
+               var(--color-win95-light) var(--color-win95-dark);
+}
+
+.focus-dial__arc {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--color-accent-glow));
+  transition: stroke-dasharray 0.1s ease;
+}
+
+.focus-dial__indicator {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 10px var(--color-accent);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.focus-dial__value {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+}
+
+/* ============================================================================
+ * Auto/Manual Toggle
+ * ============================================================================ */
+
+.auto-manual-toggle {
+  display: flex;
+  background: var(--color-void-deep);
+  border: 2px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light)
+               var(--color-win95-light) var(--color-win95-dark);
+}
+
+.auto-manual-toggle__option {
+  flex: 1;
+  padding: 5px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  cursor: pointer;
+  color: var(--color-text-dim);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.auto-manual-toggle__option:hover {
+  color: var(--color-text-muted);
+  background: var(--color-void-mid);
+}
+
+.auto-manual-toggle__option--active {
+  background: var(--color-accent-dim);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 8px var(--color-accent-glow);
+}
+
+.auto-manual-toggle__diamond {
+  font-size: 8px;
+}
+
+/* ============================================================================
+ * Advanced Panel (collapsible)
+ * ============================================================================ */
+
+.advanced-panel {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.advanced-panel--open {
+  max-height: 1000px;
+  opacity: 1;
+}
+
+/* Scroll hint chevron bounce */
+.scroll-hint-chevron {
+  animation: scrollHintBounce 1.5s ease-in-out infinite;
+}
+
+@keyframes scrollHintBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(3px); opacity: 1; }
+}
+
+.advanced-panel__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+/* ============================================================================
+ * Custom Input (number input)
+ * ============================================================================ */
+
+.win95-input {
+  background: var(--color-void-deep);
+  border: 2px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light)
+               var(--color-win95-light) var(--color-win95-dark);
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.win95-input:focus {
+  border-color: var(--color-accent) var(--color-win95-light)
+               var(--color-win95-light) var(--color-accent);
+}
+
+/* Number input spinner controls */
+.win95-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.win95-input[type="number"]::-webkit-outer-spin-button,
+.win95-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ============================================================================
+ * Spatial Mode Toggle (3-way)
+ * ============================================================================ */
+
+.spatial-mode-toggle {
+  display: flex;
+  background: var(--color-void-deep);
+  border: 2px solid;
+  border-color: var(--color-win95-dark) var(--color-win95-light)
+               var(--color-win95-light) var(--color-win95-dark);
+  border-radius: 0;
+}
+
+.spatial-mode-toggle__option {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 9px;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.spatial-mode-toggle__option:not(:last-child) {
+  border-right: 1px solid var(--color-panel-border);
+}
+
+.spatial-mode-toggle__option--active {
+  background: var(--color-accent-dim);
+  color: var(--color-accent);
+  box-shadow: inset 0 0 8px rgba(74, 138, 74, 0.3);
+}
+
+.spatial-mode-toggle__option:hover:not(.spatial-mode-toggle__option--active) {
+  background: var(--color-void-surface);
+  color: var(--color-text-primary);
+}
+
+.spatial-mode-toggle__icon {
+  font-size: 10px;
+}
+
+/* ============================================================================
+ * Mode Toggle 3-way (for destination panels)
+ * ============================================================================ */
+
+.mode-toggle-3way {
+  display: flex;
+  gap: 1px;
+}
+
+.mode-toggle-3way button {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: var(--color-win95-face);
+  border: 2px solid;
+  border-color: var(--color-win95-light) var(--color-win95-dark)
+               var(--color-win95-dark) var(--color-win95-light);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-toggle-3way button:hover {
+  background: var(--color-void-elevated);
+  color: var(--color-text-primary);
+}
+
+.mode-toggle-3way button.active {
+  background: var(--color-accent-dim);
+  color: var(--color-text-primary);
+  border-color: var(--color-accent) var(--color-win95-dark)
+               var(--color-win95-dark) var(--color-accent);
+}
+
+/* ============================================================================
+ * Desktop Character — Body (dark brushed aluminum — Simurai gradient stack)
+ *
+ * Five-layer material:
+ *   1. Edge vignette (asymmetric — top heavier, matching overhead light)
+ *   2. Anisotropic light catch (wide ellipse = stretched highlight along grain)
+ *   3. Three machining-line passes at different frequencies (pseudo-random)
+ *   4. Base color ramp (center-bright, edges-dark)
+ * Plus ::before for SVG noise, ::after for edge darkening.
+ * ============================================================================ */
+/* Body surface rendered by BodyCanvas (R3F WebGL shader).
+ * CSS provides layout + stacking context only. */
+.character-body {
+  position: relative;
+  isolation: isolate;
+  /* Thin machined ridge — kept for HTML edge, shader handles interior */
+  border: 1px solid rgba(80, 78, 72, 0.25);
+}
+
+/* ============================================================================
+ * Desktop Character — Label Zone (between face and belly)
+ * ============================================================================ */
+.label-zone {
+  padding: 6px 28px 4px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.label-engraved {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  /* Visible engraved groove: lighter than body so text reads against texture */
+  color: rgba(80, 76, 70, 0.9);
+  text-shadow:
+    /* Top edge of groove (shadow inside the cut) */
+    0 -1px 0 rgba(0, 0, 0, 0.6),
+    /* Bottom edge catches overhead light */
+    0 1px 0 rgba(255, 255, 255, 0.15),
+    /* Soft shadow fill inside groove */
+    0 0 3px rgba(0, 0, 0, 0.3);
+}
+
+.engraved-logo {
+  color: rgba(105, 103, 98, 0.85);
+  filter:
+    drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.6))
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.15))
+    drop-shadow(0 0 2px rgba(0, 0, 0, 0.3));
+  display: block;
+  flex-shrink: 0;
+}
+
+
+/* ============================================================================
+ * Desktop Character — Speakers + Vents
+ * ============================================================================ */
+/* ============================================================================
+ * Speaker Grills — perforated dot pattern (flanking the face display)
+ * ============================================================================ */
+
+/* Speaker unit — a separate black object installed into the body.
+ * Like a studio monitor driver or microphone head: dark mesh grille
+ * over a black interior, with a metallic mounting ring. */
+.speaker-grill {
+  margin: 8px 6px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+
+  /* Speaker body: matte black with subtle depth gradient */
+  background: linear-gradient(
+    to bottom,
+    #0c0b0a 0%,
+    #080706 30%,
+    #050404 60%,
+    #0a0908 100%
+  );
+
+  /* Mounting ring: metallic bezel where speaker meets body */
+  border: 3px solid #2a2826;
+  outline: 1px solid rgba(0, 0, 0, 0.8);
+  outline-offset: 0px;
+
+  box-shadow:
+    /* Recessed into the body */
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    inset 0 -1px 4px rgba(0, 0, 0, 0.4),
+    /* Mounting ring light catch */
+    0 -1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 0 rgba(0, 0, 0, 0.6),
+    /* Shadow cast onto body */
+    0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Speaker mesh — fine woven grille texture like a microphone head.
+ * Two perpendicular fine line grids = crosshatch weave pattern.
+ * Very fine (2px period), barely visible individually, reads as fabric. */
+.speaker-grill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    /* Horizontal threads */
+    repeating-linear-gradient(0deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.07) 2px,
+      rgba(255, 255, 255, 0.07) 3px
+    ),
+    /* Vertical threads */
+    repeating-linear-gradient(90deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.07) 2px,
+      rgba(255, 255, 255, 0.07) 3px
+    );
+}
+
+/* Dome curvature — radial highlight suggesting a convex speaker surface.
+ * Brighter center, dark edges = the mesh curves away from you. */
+.speaker-grill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse 70% 60% at 45% 40%,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 40%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+/* ============================================================================
+ * Vent Slots — vertical louvers at bottom corners (heat exhaust)
+ * ============================================================================ */
+
+/* Vent housing — beveled pocket with vertical louvers, flanking the control panel */
+.vent-slot {
+  width: 70px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  margin: 4px 6px;
+
+  background:
+    linear-gradient(to right,
+      #060504 0%, #0e0c0a 40%, #161412 70%, #1a1816 100%),
+    linear-gradient(160deg,
+      #484644 0%, #3e3c3a 20%, #302e2c 50%, #201e1c 80%, #181614 100%);
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+  background-color: #2a2826;
+
+  border: 4px solid transparent;
+
+  box-shadow:
+    inset 3px 0 8px rgba(0, 0, 0, 0.9),
+    inset -2px 0 6px rgba(0, 0, 0, 0.4),
+    inset 0 3px 6px rgba(0, 0, 0, 0.5),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.5),
+    0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Vertical louver blades */
+.vent-slot::before {
+  content: '';
+  position: absolute;
+  inset: 4px 3px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 5px,
+    rgba(18, 16, 14, 1) 5px,
+    rgba(22, 20, 18, 1) 6px,
+    rgba(48, 46, 42, 1) 6px,
+    rgba(62, 58, 54, 1) 9px,
+    rgba(82, 78, 72, 1) 9px,
+    rgba(72, 68, 64, 1) 10px,
+    transparent 10px,
+    transparent 15px
+  );
+}
+
+/* Depth overlay — left-side shadow */
+.vent-slot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0.1) 25%,
+    transparent 50%,
+    transparent 75%,
+    rgba(0, 0, 0, 0.15) 100%
+  );
+  pointer-events: none;
+}
+
+/* ============================================================================
+ * Desktop Character — Belly Screen (thick dark glass bezel + screen-bleed)
+ * ============================================================================ */
+.belly-screen {
+  /* Void screen inside, beveled dark frame on border */
+  background:
+    var(--color-void-abyss),
+    linear-gradient(180deg, #252320 0%, #1c1a18 40%, #141210 70%, #0e0c0a 100%);
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+  border: 14px solid transparent;
+  border-radius: 4px;
+  /* Rubber gasket — compression seal between glass and metal */
+  outline: 2px solid #0e0c0a;
+  outline-offset: 0px;
+  /* Deep glass recess (top heavier = overhead rack lighting) + screen glow bleed */
+  box-shadow:
+    /* Glass highlight — faint bloom in top-left of bezel */
+    inset 4px 4px 14px rgba(255, 255, 255, 0.03),
+    /* Inner recess — screen sunk into the frame */
+    inset 0 4px 10px 2px rgba(0, 0, 0, 0.95),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.5),
+    inset 3px 0 8px rgba(0, 0, 0, 0.4),
+    inset -3px 0 8px rgba(0, 0, 0, 0.4),
+    /* Outer beveled edge */
+    1px 1px 0 rgba(0, 0, 0, 0.5),
+    -1px -1px 0 rgba(255, 255, 255, 0.06),
+    2px 2px 4px rgba(0, 0, 0, 0.4),
+    /* Screen glow — exponential falloff onto surrounding metal */
+    0 0 6px 1px rgba(74, 222, 128, 0.06),
+    0 0 20px 4px rgba(74, 222, 128, 0.03),
+    0 0 50px 10px rgba(74, 222, 128, 0.015);
+  overflow: clip;
+}
+
+/* ============================================================================
+ * Desktop Character — Face Screen (narrow dark glass bezel + phosphor glow)
+ * ============================================================================ */
+.face-screen {
+  background:
+    var(--color-void-abyss),
+    linear-gradient(160deg, #1e221c 0%, #181c16 30%, #141814 55%, #101310 80%, #0a0d0a 100%);
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+  border: 12px solid transparent;
+  border-radius: 14px;
+  /* Rubber gasket — compression seal between glass and metal */
+  outline: 2px solid #0e0c0a;
+  outline-offset: 0px;
+  /* Deep glass recess (top heavier) + green phosphor glow — exponential falloff */
+  box-shadow:
+    /* Glass highlight — faint bloom in top-left of bezel */
+    inset 3px 3px 10px rgba(255, 255, 255, 0.04),
+    inset 0 4px 10px rgba(0, 0, 0, 0.9),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.5),
+    inset 3px 0 7px rgba(0, 0, 0, 0.4),
+    inset -3px 0 7px rgba(0, 0, 0, 0.4),
+    /* Phosphor screen-bleed — 4 layers for smooth exponential falloff */
+    0 0 4px 1px rgba(0, 255, 60, 0.15),
+    0 0 14px 4px rgba(0, 255, 60, 0.08),
+    0 0 35px 10px rgba(0, 200, 50, 0.04),
+    0 0 80px 20px rgba(0, 200, 50, 0.02);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Phosphor glow — box-shadow on rectangular canvas (cheaper than drop-shadow filter) */
+.face-glow {
+  box-shadow:
+    0 0 6px rgba(74, 222, 128, 0.5),
+    0 0 20px rgba(74, 222, 128, 0.2);
+}
+
+/* ============================================================================
+ * Desktop Character — Glass Reflection (belly + face bezels)
+ *
+ * ::before pseudo-element with diagonal gradient + radial hotspot.
+ * Simulates curved glass catching overhead light.
+ * ============================================================================ */
+/* Glass reflections: bezels use inset box-shadow for highlight.
+   Face screen additionally gets a .face-glass overlay div (sibling of the
+   WebGL canvas) because ::before pseudo-elements are covered by canvas. */
+
+.face-glass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  /* Very diffuse hotspot — large ellipse so no visible circle edge */
+  background:
+    radial-gradient(ellipse 200% 140% at 20% 10%,
+      rgba(255, 255, 255, 0.04) 0%, transparent 60%),
+    linear-gradient(155deg,
+      rgba(255, 255, 255, 0.02) 0%, transparent 30%);
+  border-radius: inherit;
+}
+
+/* ============================================================================
+ * Desktop Character — Face Scanlines (Lucas Bebber technique)
+ *
+ * Horizontal scanlines (2px period) + vertical phosphor triads (3px period).
+ * Tiled infinitely at negligible cost.
+ * ============================================================================ */
+.face-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg,
+      transparent 0px, transparent 1px,
+      rgba(0, 0, 0, 0.2) 1px, rgba(0, 0, 0, 0.2) 2px),
+    repeating-linear-gradient(90deg,
+      transparent 0px, transparent 2px,
+      rgba(0, 0, 0, 0.06) 2px, rgba(0, 0, 0, 0.06) 3px);
+  z-index: 2;
+}
+
+
+/* ============================================================================
+ * Desktop Character — LED Indicators (label zone)
+ *
+ * radial-gradient lens dome, multi-layer box-shadow for glow + surface bleed.
+ * Audio-reactive via CSS custom property --led-brightness (future).
+ * ============================================================================ */
+.led-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* Green lens dome with specular highlight */
+  background: radial-gradient(circle at 40% 35%,
+    rgba(120, 255, 120, 0.9) 0%,
+    rgba(74, 180, 74, 0.8) 40%,
+    rgba(40, 100, 40, 0.6) 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.4),
+    0 0 4px 1px rgba(74, 222, 128, 0.5),
+    0 0 12px 3px rgba(74, 222, 128, 0.2);
+  animation: led-blink-green 3s ease-in-out infinite;
+}
+
+.led-indicator--amber {
+  background: radial-gradient(circle at 40% 35%,
+    rgba(255, 200, 80, 0.9) 0%,
+    rgba(200, 150, 50, 0.8) 40%,
+    rgba(120, 80, 20, 0.6) 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.4),
+    0 0 4px 1px rgba(255, 180, 60, 0.5),
+    0 0 12px 3px rgba(255, 180, 60, 0.2);
+  animation: led-blink-amber 4.5s ease-in-out infinite;
+}
+
+/* Server-style blink: mostly on, quick flicker off then back.
+ * Green blinks faster (activity), amber slower (status). */
+@keyframes led-blink-green {
+  0%, 100% { opacity: 1; }
+  48% { opacity: 1; }
+  50% { opacity: 0.15; }
+  52% { opacity: 1; }
+  78% { opacity: 1; }
+  79% { opacity: 0.15; }
+  80% { opacity: 0.15; }
+  81% { opacity: 1; }
+}
+
+@keyframes led-blink-amber {
+  0%, 100% { opacity: 1; }
+  65% { opacity: 1; }
+  67% { opacity: 0.15; }
+  69% { opacity: 1; }
+}
+
+.led-cluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Body lighting now handled by BodyCanvas R3F shader */
+
+/* ============================================================================
+ * Desktop Character — Mode Transition (CRT channel switch)
+ * ============================================================================ */
+.mode-transition-static {
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px
+  );
+  animation: static-flash 100ms ease-out forwards;
+}
+
+@keyframes static-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ============================================================================
+ * Pushbuttons — 3D button with physical throw
+ * (Josh Comeau technique: edge + face layers with translateY)
+ * ============================================================================ */
+.pushbutton {
+  position: relative;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  user-select: none;
+  /* Raised state — GPU-composited, no paint */
+  transform: translateY(-3px);
+  transition: transform 0.1s ease;
+}
+
+.pushbutton:hover {
+  transform: translateY(-4px);
+}
+
+.pushbutton:active {
+  /* Physical throw — button pressed down */
+  transform: translateY(-1px);
+}
+
+/* The shadow edge underneath the face */
+.pushbutton__edge {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #0e0e0c 0%, #080806 100%);
+  transform: translateY(3px);
+}
+
+/* The visible face of the button */
+.pushbutton__face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 8px 16px;
+  min-width: 48px;
+  min-height: 36px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  /* Dark neutral face — like actual hardware */
+  background: linear-gradient(180deg, #1e1e1c 0%, #1a1a18 50%, #161614 100%);
+  border: 1px solid rgba(80, 78, 72, 0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Active state — green text glow, background stays dark */
+.pushbutton--active .pushbutton__face {
+  color: var(--color-accent);
+  text-shadow: 0 0 6px rgba(74, 222, 128, 0.4);
+  border-color: rgba(74, 222, 128, 0.12);
+}
+
+/* Small variant (pin button) */
+.pushbutton--small .pushbutton__face {
+  min-width: 38px;
+  padding: 8px 12px;
+}
+
+/* ============================================================================
+ * Pushbutton Row — Layout container
+ * ============================================================================ */
+.pushbutton-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px 14px;
+  justify-content: center;
+}
+
+.pushbutton-separator {
+  width: 1px;
+  height: 28px;
+  background: rgba(80, 78, 72, 0.2);
+  margin: 0 4px;
+}
+
+/* ============================================================================
+ * FX Popover — Hardware-styled dark panel with LED toggles
+ * ============================================================================ */
+.fx-popover {
+  background: linear-gradient(180deg, rgba(16, 20, 16, 0.96) 0%, rgba(12, 16, 12, 0.96) 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(74, 222, 128, 0.1);
+  border-radius: 6px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 12px rgba(74, 222, 128, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.fx-popover__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+/* ============================================================================
+ * LED Toggle — DIP switches for FX hatch (smaller/darker than pushbuttons)
+ * ============================================================================ */
+.led-toggle {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  padding: 3px 10px;
+  min-height: 24px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0e120e 0%, #141814 100%);
+  border: 1px solid rgba(74, 222, 128, 0.08);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.1s ease;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(255, 255, 255, 0.02);
+  position: relative;
+}
+
+.led-toggle:hover {
+  background: linear-gradient(180deg, #121612 0%, #181c18 100%);
+}
+
+/* Active — green text glow + LED dot */
+.led-toggle--active {
+  color: #4ade80;
+  text-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  border-color: rgba(74, 222, 128, 0.15);
+}
+
+.led-toggle--active::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+}
+
+
+/* ============================================================================
+ * FX Overlays — Expanded visual effects (z-index 9993–9996)
+ * ============================================================================ */
+
+/* Heavy Grain — Film grain flicker via feTurbulence */
+.heavy-grain-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  animation: grain-flicker 0.3s steps(4) infinite;
+  z-index: 9993;
+}
+
+@keyframes grain-flicker {
+  0%   { background-position: 0 0; }
+  25%  { background-position: -100px -50px; }
+  50%  { background-position: 50px -100px; }
+  75%  { background-position: -50px 100px; }
+  100% { background-position: 100px 50px; }
+}
+
+/* VHS Tracking — Horizontal band scanning top→bottom */
+.vhs-tracking-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9994;
+  overflow: hidden;
+}
+
+.vhs-tracking-overlay::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.03);
+  animation: vhs-scroll-1 3s linear infinite;
+}
+
+.vhs-tracking-overlay::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  animation: vhs-scroll-2 1.7s linear infinite;
+}
+
+@keyframes vhs-scroll-1 {
+  0%   { top: -12px; }
+  100% { top: 100%; }
+}
+
+@keyframes vhs-scroll-2 {
+  0%   { top: -3px; }
+  100% { top: 100%; }
+}
+
+/* Phosphor Bloom — Soft glow/bleed on bright areas */
+.bloom-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  backdrop-filter: blur(6px) brightness(1.3);
+  -webkit-backdrop-filter: blur(6px) brightness(1.3);
+  mix-blend-mode: screen;
+  opacity: 0.25;
+  z-index: 9995;
+}
+
+/* Chromatic Aberration — Red/cyan fringe at edges */
+.chromatic-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 4px 0 12px rgba(255, 0, 0, 0.08),
+    inset -4px 0 12px rgba(0, 255, 255, 0.08),
+    inset 0 2px 8px rgba(255, 0, 0, 0.04),
+    inset 0 -2px 8px rgba(0, 255, 255, 0.04);
+  z-index: 9996;
+}
+
+/* ============================================================================
+ * Desktop Character — Overlay Placeholders
+ * ============================================================================ */
+.desktop-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--color-void-abyss);
+  z-index: 10100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}

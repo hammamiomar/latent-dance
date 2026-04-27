@@ -1,0 +1,81 @@
+# Git
+.git
+.gitignore
+.gitmodules
+
+# Python virtual environments and caches
+.venv
+venv
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.eggs
+
+# Node.js
+node_modules
+frontend/node_modules
+frontend/.vite
+frontend/dist
+
+# IDE/editor/OS files
+.vscode
+.idea
+.claude
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build artifacts and logs
+*.log
+.coverage
+htmlcov
+dist
+build
+
+# Local inputs/outputs and heavyweight artifacts
+inputs/
+output/
+glb/
+checkpoints/
+data/labeling/
+data/rae/
+data/sdxl/sae_weights/
+mf-rae/
+
+# Media uploads
+*.mp3
+*.wav
+*.mp4
+*.flac
+*.ogg
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Research/personal docs should not be in public runtime images
+notes/
+docs/
+*.md
+!README.md
+!LICENSE
+!NOTICE
+
+# Tests are not needed at runtime
+tests/
+frontend/src/test/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Jupyter
+*.ipynb
+.ipynb_checkpoints/

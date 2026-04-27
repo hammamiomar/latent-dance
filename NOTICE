@@ -1,0 +1,16 @@
+latent-dance
+Copyright (c) Omar Hammami.
+
+Required Notice: latent-dance source code is licensed for noncommercial use under the PolyForm Noncommercial License 1.0.0. Commercial use requires separate permission from the author.
+
+This project uses SDXL-Turbo sparse autoencoders trained and released by Surkov et al. / EPFL through the sdxl-unbox project. The public label dataset produced by latent-dance labels and analyzes those upstream SAE features; it does not claim authorship of the SAE training or checkpoint creation.
+
+Major upstream components and artifacts include:
+
+- SDXL-Turbo by Stability AI: https://huggingface.co/stabilityai/sdxl-turbo
+- SDXL-Turbo SAE / sdxl-unbox by Surkov et al. / EPFL: https://github.com/surkovv/sdxl-unbox and https://sdxl-unbox.epfl.ch/
+- Demucs by Meta/Facebook Research: https://github.com/facebookresearch/demucs
+- Diffusers by Hugging Face: https://github.com/huggingface/diffusers
+- Public latent-dance SAE labels dataset: https://huggingface.co/datasets/hammamiomar/sdxl-turbo-sae-labels
+
+See docs/ATTRIBUTION.md for details.

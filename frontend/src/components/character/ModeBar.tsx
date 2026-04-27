@@ -1,0 +1,165 @@
+/**
+ * ModeBar - Green backlit pushbuttons at the bottom of the character.
+ *
+ * Section labels: "SYSTEM CONTROL" | "PRESETS" | "LINK"
+ * Pushbuttons use Josh Comeau's 3D button technique: edge + face layers
+ * with translateY for physical throw on press.
+ */
+
+import { useState, useEffect, useCallback } from "react";
+import { SHELL_BRIDGE_PORT } from "../../constants";
+import { useEffectsStore } from "../../stores/useEffectsStore";
+
+export type BellyMode = "visualizer" | "settings" | "data";
+
+interface ModeBarProps {
+  activeMode: BellyMode;
+  onModeChange: (mode: BellyMode) => void;
+  showHelp: boolean;
+  onHelpToggle: () => void;
+}
+
+const MODES: { key: BellyMode; icon: string; title: string }[] = [
+  { key: "visualizer", icon: "[>]", title: "Visualizer" },
+  { key: "settings", icon: "[-]", title: "Settings" },
+  { key: "data", icon: "[#]", title: "Data" },
+];
+
+export function ModeBar({ activeMode, onModeChange, showHelp, onHelpToggle }: ModeBarProps) {
+  const {
+    showCrt,
+    showDither,
+    showEffectsPanel,
+    showChromatic,
+    showBloom,
+    showVhsTracking,
+    showHeavyGrain,
+    toggle,
+  } = useEffectsStore();
+  const [pinned, setPinned] = useState(true);
+
+  useEffect(() => {
+    fetch(`http://localhost:${SHELL_BRIDGE_PORT}/pin`)
+      .then((r) => r.json())
+      .then((data) => setPinned(data.pinned))
+      .catch(() => {});
+  }, []);
+
+  const togglePin = useCallback(() => {
+    fetch(`http://localhost:${SHELL_BRIDGE_PORT}/pin`, { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => setPinned(data.pinned))
+      .catch(() => setPinned((p) => !p));
+  }, []);
+
+  return (
+    <div className="shrink-0 relative">
+      {/* FX popover — hardware-styled panel above buttons */}
+      {showEffectsPanel && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50">
+          <div className="fx-popover p-3 flex flex-col gap-3" style={{ minWidth: "160px" }}>
+            <div className="flex flex-col gap-1.5">
+              <div className="fx-popover__label">Screen</div>
+              <button
+                className={`led-toggle w-full ${showCrt ? "led-toggle--active" : ""}`}
+                onClick={() => toggle("showCrt")}
+              >
+                {showCrt ? "\u25C6" : "\u25C7"} CRT
+              </button>
+              <button
+                className={`led-toggle w-full ${showBloom ? "led-toggle--active" : ""}`}
+                onClick={() => toggle("showBloom")}
+              >
+                {showBloom ? "\u25C6" : "\u25C7"} Bloom
+              </button>
+              <button
+                className={`led-toggle w-full ${showChromatic ? "led-toggle--active" : ""}`}
+                onClick={() => toggle("showChromatic")}
+              >
+                {showChromatic ? "\u25C6" : "\u25C7"} Chromatic
+              </button>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="fx-popover__label">Texture</div>
+              <button
+                className={`led-toggle w-full ${showDither ? "led-toggle--active" : ""}`}
+                onClick={() => toggle("showDither")}
+              >
+                {showDither ? "\u25C6" : "\u25C7"} Dither
+              </button>
+              <button
+                className={`led-toggle w-full ${showHeavyGrain ? "led-toggle--active" : ""}`}
+                onClick={() => toggle("showHeavyGrain")}
+              >
+                {showHeavyGrain ? "\u25C6" : "\u25C7"} Grain
+              </button>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="fx-popover__label">Glitch</div>
+              <button
+                className={`led-toggle w-full ${showVhsTracking ? "led-toggle--active" : ""}`}
+                onClick={() => toggle("showVhsTracking")}
+              >
+                {showVhsTracking ? "\u25C6" : "\u25C7"} VHS
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pushbutton row */}
+      <div className="pushbutton-row">
+        {MODES.map(({ key, icon, title }) => (
+          <button
+            key={key}
+            className={`pushbutton ${activeMode === key ? "pushbutton--active" : ""}`}
+            onClick={() => onModeChange(key)}
+            title={title}
+          >
+            <span className="pushbutton__edge" />
+            <span className="pushbutton__face">{icon}</span>
+          </button>
+        ))}
+
+        {/* Vertical separator */}
+        <div className="pushbutton-separator" />
+
+        {/* FX toggle */}
+        <button
+          className={`pushbutton ${showEffectsPanel ? "pushbutton--active" : ""}`}
+          onClick={() => toggle("showEffectsPanel")}
+          title="Visual effects"
+        >
+          <span className="pushbutton__edge" />
+          <span className="pushbutton__face">[*]</span>
+        </button>
+
+        {/* Separator */}
+        <div className="pushbutton-separator" />
+
+        {/* Pin toggle */}
+        <button
+          className={`pushbutton pushbutton--small ${pinned ? "pushbutton--active" : ""}`}
+          onClick={togglePin}
+          title="Always on top"
+        >
+          <span className="pushbutton__edge" />
+          <span className="pushbutton__face">&ndash;</span>
+        </button>
+
+        {/* Separator */}
+        <div className="pushbutton-separator" />
+
+        {/* Help / parameter guide */}
+        <button
+          className={`pushbutton pushbutton--small ${showHelp ? "pushbutton--active" : ""}`}
+          onClick={onHelpToggle}
+          title="Parameter guide"
+        >
+          <span className="pushbutton__edge" />
+          <span className="pushbutton__face">[?]</span>
+        </button>
+      </div>
+    </div>
+  );
+}

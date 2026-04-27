@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+title: latent-dance
+type: software
+authors:
+  - family-names: Hammami
+    given-names: Omar
+repository-code: "https://github.com/hammamiomar/latent-dance"
+url: "https://hammamiomar.xyz/"
+abstract: "A real-time audio-reactive SDXL-Turbo visualizer using SAE feature steering."
+license: PolyForm-Noncommercial-1.0.0
+keywords:
+  - music visualization
+  - sparse autoencoders
+  - mechanistic interpretability
+  - diffusion models
+  - SDXL-Turbo
+message: "If you use latent-dance, cite this repository and the upstream sdxl-unbox SAE work from Surkov et al."

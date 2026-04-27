@@ -1,0 +1,76 @@
+# Physics presets for mass-spring-damper steering
+#
+# Damping ratios (zeta) tuned for organic motion:
+# - zeta < 1: underdamped (overshoot, bounce, settle) = ALIVE feeling
+# - zeta = 1: critically damped (fastest, no overshoot) = mechanical
+# - zeta > 1: overdamped (slow approach) = heavy/dreamy
+#
+# Research: zeta = 0.4-0.7 feels most organic for music visualization
+# Designed for 120 BPM reference - scale for other tempos
+
+# Drums: underdamped for REAL punch and bounce
+kick:
+  mass: 1.0
+  stiffness: 400.0
+  damping: 18.0  # zeta ~ 0.45
+
+drums:
+  mass: 1.0
+  stiffness: 350.0
+  damping: 17.0  # zeta ~ 0.45
+
+drums_low:
+  mass: 1.2
+  stiffness: 300.0
+  damping: 19.0  # zeta ~ 0.50 (Kick: slightly heavier)
+
+drums_mid:
+  mass: 1.0
+  stiffness: 400.0
+  damping: 18.0  # zeta ~ 0.45 (Snare: punchy crack, rhythmic)
+
+drums_high:
+  mass: 0.8
+  stiffness: 500.0
+  damping: 16.0  # zeta ~ 0.40 (Hats: snappy)
+
+# Bass: slightly underdamped - weighty but responsive
+bass:
+  mass: 1.5
+  stiffness: 150.0
+  damping: 25.5  # zeta ~ 0.85
+
+# Vocals: underdamped for expressiveness - breathes with phrasing
+vocals:
+  mass: 1.0
+  stiffness: 250.0
+  damping: 22.0  # zeta ~ 0.70
+
+# Other: underdamped - melodic instruments should swing
+other:
+  mass: 1.0
+  stiffness: 200.0
+  damping: 18.0  # zeta ~ 0.65
+
+other_mid:
+  mass: 1.0
+  stiffness: 200.0
+  damping: 20.0  # zeta ~ 0.70
+
+other_high:
+  mass: 0.8
+  stiffness: 350.0
+  damping: 17.0  # zeta ~ 0.50
+
+# Ambient: very slow, dreamy
+ambient:
+  mass: 2.0
+  stiffness: 50.0
+  damping: 25.0  # zeta ~ 1.25 (overdamped)
+
+# Linear: critically damped for instant response (direct mapping)
+# Tuned for 50 FPS (dt=0.02s) semi-implicit Euler stability: omega_0 < 1/dt = 50
+linear:
+  mass: 1.0
+  stiffness: 2500.0
+  damping: 100.0  # zeta ~ 1.0 (critically damped)

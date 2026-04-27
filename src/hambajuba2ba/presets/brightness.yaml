@@ -1,0 +1,50 @@
+# Brightness presets for spectral centroid processing
+#
+# Brightness tracks timbral "shine" which varies differently per instrument.
+# Spectral centroid measures the "center of mass" of the frequency spectrum.
+# Higher values = brighter/sharper sound, lower = warmer/duller.
+
+# Drums: fast response for transient brightness changes
+drums:
+  attack_ms: 5.0
+  release_ms: 80.0
+
+drums_low:
+  attack_ms: 10.0
+  release_ms: 120.0  # Kick: slower, more warmth
+
+drums_mid:
+  attack_ms: 5.0
+  release_ms: 80.0   # Snare: punchy brightness
+
+drums_high:
+  attack_ms: 3.0
+  release_ms: 60.0   # Hats: crisp shimmer
+
+# Bass: slower brightness changes (timbral warmth evolves slowly)
+bass:
+  attack_ms: 15.0
+  release_ms: 200.0
+
+# Vocals: balanced for natural timbral evolution
+vocals:
+  attack_ms: 15.0
+  release_ms: 150.0
+
+# Other: default balanced
+other:
+  attack_ms: 15.0
+  release_ms: 150.0
+
+other_mid:
+  attack_ms: 15.0
+  release_ms: 150.0
+
+other_high:
+  attack_ms: 8.0
+  release_ms: 100.0  # Faster for air/shimmer
+
+# Default fallback
+default:
+  attack_ms: 15.0
+  release_ms: 150.0

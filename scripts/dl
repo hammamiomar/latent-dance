@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# dl — download audio from YouTube to inputs/<folder> as best-quality WAV
+# Usage: ./dl <url> <folder>
+
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+  echo "Usage: ./dl <url> <folder>"
+  echo "  e.g. ./dl https://youtube.com/watch?v=xyz dreamy-ambient"
+  exit 1
+fi
+
+URL="$1"
+FOLDER="inputs/$2"
+
+mkdir -p "$FOLDER"
+
+yt-dlp -x --audio-format wav --audio-quality 0 \
+  --no-playlist \
+  -o "$FOLDER/%(title)s.%(ext)s" \
+  "$URL"
+
+echo "Done → $FOLDER/"

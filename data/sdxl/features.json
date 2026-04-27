@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "description": "MVP feature set for SAE steering (20 features across 4 blocks)",
+  "blocks": {
+    "down.2.1": {
+      "name": "Composition",
+      "description": "Scene structure, mood, intensity - affects overall composition",
+      "semantic_level": "high",
+      "features": {
+        "2301": {"label": "intense/evil", "category": "mood"},
+        "4074": {"label": "anime style", "category": "style"},
+        "89": {"label": "muscular", "category": "form"},
+        "527": {"label": "dark/black", "category": "color"},
+        "4998": {"label": "cartoon", "category": "style"}
+      }
+    },
+    "mid.0": {
+      "name": "Abstract",
+      "description": "Global effects, distortion - abstract transformations",
+      "semantic_level": "abstract",
+      "features": {
+        "1388": {"label": "distortion", "category": "abstract"}
+      }
+    },
+    "up.0.0": {
+      "name": "Details",
+      "description": "Expressions, objects - fine details and features",
+      "semantic_level": "detail",
+      "features": {
+        "2937": {"label": "shouting", "category": "expression"},
+        "4161": {"label": "smile", "category": "expression"},
+        "2638": {"label": "sunglasses", "category": "object"},
+        "4594": {"label": "moustache", "category": "object"},
+        "775": {"label": "buttons", "category": "texture"}
+      }
+    },
+    "up.0.1": {
+      "name": "Style",
+      "description": "Patterns, textures - surface appearance and styling",
+      "semantic_level": "texture",
+      "features": {
+        "4977": {"label": "tiger stripes", "category": "pattern"},
+        "90": {"label": "fur texture", "category": "texture"},
+        "1393": {"label": "leopard spots", "category": "pattern"},
+        "2615": {"label": "twilight", "category": "lighting"},
+        "3718": {"label": "giraffe pattern", "category": "pattern"}
+      }
+    }
+  },
+  "default_stem_mappings": {
+    "bass": {
+      "block": "down.2.1",
+      "feature_id": 2301,
+      "label": "intense/evil",
+      "description": "Low frequencies drive compositional intensity"
+    },
+    "drums": {
+      "block": "up.0.0",
+      "feature_id": 2937,
+      "label": "shouting",
+      "description": "Percussion triggers expressive details"
+    },
+    "vocals": {
+      "block": "up.0.1",
+      "feature_id": 4977,
+      "label": "tiger stripes",
+      "description": "Voice patterns create surface textures"
+    },
+    "other": {
+      "block": "mid.0",
+      "feature_id": 1388,
+      "label": "distortion",
+      "description": "Ambient sounds create abstract effects"
+    }
+  },
+  "categories": {
+    "mood": {"color": "#F59E0B", "description": "Emotional atmosphere"},
+    "style": {"color": "#8B5CF6", "description": "Visual style/aesthetic"},
+    "form": {"color": "#10B981", "description": "Shape and structure"},
+    "color": {"color": "#3B82F6", "description": "Color palette"},
+    "expression": {"color": "#EC4899", "description": "Facial expressions"},
+    "object": {"color": "#6366F1", "description": "Objects and accessories"},
+    "texture": {"color": "#14B8A6", "description": "Surface textures"},
+    "pattern": {"color": "#F97316", "description": "Repeating patterns"},
+    "lighting": {"color": "#EAB308", "description": "Light and atmosphere"},
+    "abstract": {"color": "#A855F7", "description": "Abstract effects"}
+  }
+}

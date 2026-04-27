@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.venv
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+cython_debug/
+
+# Frontend
+node_modules/
+
+# Build output
+dist/
+build/
+*.dylib
+
+# IDE / Editor / Tools
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Model files (generic — NOT our SAE weights)
+*.h5
+*.hdf5
+*.pkl
+*.onnx
+*.ckpt
+wandb/
+
+# Large media (uploaded audio lives elsewhere)
+*.mp3
+*.wav
+*.mp4
+*.flac
+*.ogg
+
+# Project-specific
+inputs/**
+output/
+glb/
+.cache/
+.ipynb_checkpoints/
+checkpoints/
+
+# SAE labeling data (large artifacts, hosted on HuggingFace)
+data/labeling/

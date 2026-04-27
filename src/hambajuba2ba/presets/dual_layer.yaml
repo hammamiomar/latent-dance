@@ -1,0 +1,73 @@
+# Dual-layer (flash + sustain) response presets
+#
+# Flash captures immediate transient impact with very fast attack/release.
+# Sustain captures the trailing "comet tail" with slower dynamics.
+#
+# Combined, they create a visual effect where:
+# - Flash: bright initial "pop" that appears and fades quickly
+# - Sustain: gentler trailing glow that lingers
+
+# Drums: ultra-fast flash for transient snap
+drums:
+  flash_attack_ms: 1.0
+  flash_release_ms: 30.0
+  sustain_attack_ms: 10.0
+  sustain_release_ms: 100.0
+
+drums_low:
+  flash_attack_ms: 2.0
+  flash_release_ms: 50.0
+  sustain_attack_ms: 15.0
+  sustain_release_ms: 150.0
+
+drums_mid:
+  flash_attack_ms: 1.0
+  flash_release_ms: 35.0
+  sustain_attack_ms: 10.0
+  sustain_release_ms: 90.0
+
+drums_high:
+  flash_attack_ms: 0.5
+  flash_release_ms: 20.0
+  sustain_attack_ms: 5.0
+  sustain_release_ms: 60.0
+
+# Bass: slower flash (bass doesn't snap), longer sustain
+bass:
+  flash_attack_ms: 5.0
+  flash_release_ms: 80.0
+  sustain_attack_ms: 30.0
+  sustain_release_ms: 250.0
+
+# Vocals: moderate response for natural phrasing
+vocals:
+  flash_attack_ms: 5.0
+  flash_release_ms: 60.0
+  sustain_attack_ms: 20.0
+  sustain_release_ms: 180.0
+
+# Other: balanced default
+other:
+  flash_attack_ms: 3.0
+  flash_release_ms: 50.0
+  sustain_attack_ms: 15.0
+  sustain_release_ms: 150.0
+
+other_mid:
+  flash_attack_ms: 3.0
+  flash_release_ms: 50.0
+  sustain_attack_ms: 15.0
+  sustain_release_ms: 150.0
+
+other_high:
+  flash_attack_ms: 1.0
+  flash_release_ms: 30.0
+  sustain_attack_ms: 8.0
+  sustain_release_ms: 80.0
+
+# Default fallback
+default:
+  flash_attack_ms: 2.0
+  flash_release_ms: 50.0
+  sustain_attack_ms: 20.0
+  sustain_release_ms: 200.0

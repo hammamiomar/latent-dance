@@ -14,15 +14,21 @@ check_absent() {
 }
 
 check_absent './notes*' 'notes/ must not be present in public tree'
-check_absent './data/sdxl/sae_weights*' 'SAE weights must not be tracked in public tree'
+check_absent './private*' 'private/ must not be present in public tree'
+check_absent './data/sdxl/sae_weights*' 'SAE weights must not be present in public tree'
 
-if git grep -n '/Users/omarhammami' -- . ':!scripts/release/public_audit.sh'; then
-  echo 'FAIL: found local absolute path' >&2
+if git grep -n -I -E '/Users/omarhammami|RunPod|root@|id_ed25519|GITHUB_PAT|OPENROUTER_API_KEY=.*' -- . ':!scripts/release/public_audit.sh'; then
+  echo 'FAIL: found private deployment/local path marker' >&2
   fail=1
 fi
 
-if git grep -n -E 'sk-or-v1-|ghp_|hf_[A-Za-z0-9]{20,}' -- . ':!scripts/release/public_audit.sh'; then
+if git grep -n -I -E 'sk-or-v1-|ghp_|hf_[A-Za-z0-9]{20,}' -- . ':!scripts/release/public_audit.sh'; then
   echo 'FAIL: possible secret token found' >&2
+  fail=1
+fi
+
+if git grep -n -I 'HAMBA_ARTIFACT_REPO=hammamiomar/sdxl-turbo-sae-labels' -- Dockerfile .github scripts ':!scripts/release/public_audit.sh' 2>/dev/null; then
+  echo 'FAIL: Docker runtime points at label dataset instead of upstream SAE weights' >&2
   fail=1
 fi
 

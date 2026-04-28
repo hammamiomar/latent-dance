@@ -38,6 +38,7 @@ jobs:
       - run: bun run lint
 
   public-audit:
+    if: github.repository == 'hammamiomar/latent-dance'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2

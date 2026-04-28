@@ -1,15 +1,15 @@
 # Public Release Checklist
 
-Before pushing this branch to the public GitHub repository:
+Before pushing the generated public worktree to GitHub:
 
-1. Verify private checkout is clean except intentional private untracked directories.
-2. Verify this public worktree has no `notes/`, `.env`, `.DS_Store`, private sync helpers, or checked-in SAE weight files.
+1. From the private repo, run `./scripts/release/sync_public_tree.sh`.
+2. Verify the public worktree has no `notes/`, `.env`, `.DS_Store`, `private/`, personal remote-dev helpers, or checked-in SAE weight files.
 3. Verify runtime SAE weights resolve from upstream `surokpro2/sdxl-saes`.
 4. Confirm `docs/LABELING_PIPELINE.md` matches the public Hugging Face dataset state.
 5. Review the README narrative, images, logos, and demo links for final public positioning.
 6. Run backend and frontend checks.
-7. Build the public Docker image.
-8. Push this branch to the public repo as `main`.
+7. Build the public Docker image `ghcr.io/hammamiomar/latent-dance`.
+8. Push the public worktree branch to the public repo as `main`.
 9. Follow up in the personal website: update psite blog/site links and naming from the old hambajuba2ba repository to latent-dance / computers-dance language.
 
 Completed external cleanup:
@@ -26,8 +26,9 @@ Completed external cleanup:
 Suggested push shape:
 
 ```bash
-git remote add public https://github.com/hammamiomar/latent-dance.git
-git push public public-main:main
+cd ../hambaJuba2ba-public
+git push public public-root:main
 ```
 
-Keep the private repository private and continue using its personal Docker/GPU workflows there.
+Keep the private repository private and continue using
+`ghcr.io/hammamiomar/hambajuba2ba` for personal GPU workflows.

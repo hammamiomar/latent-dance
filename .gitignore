@@ -65,3 +65,6 @@ checkpoints/
 
 # SAE labeling data (large artifacts, hosted on HuggingFace)
 data/labeling/
+
+# SAE runtime checkpoints are downloaded/materialized locally.
+data/sdxl/sae_weights/

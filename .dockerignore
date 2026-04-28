@@ -47,6 +47,7 @@ data/labeling/
 data/rae/
 data/sdxl/sae_weights/
 mf-rae/
+private/
 
 # Media uploads
 *.mp3

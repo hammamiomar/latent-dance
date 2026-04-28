@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-and-push:
+    if: github.repository == 'hammamiomar/latent-dance'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:

@@ -32,7 +32,6 @@ The runtime also supports short-name local layouts:
 down.2.1/final/config.json
 down.2.1/final/state_dict.pth
 down.2.1/final/mean.pt
-down.2.1/final/std.pt
 mid.0/final/...
 up.0.0/final/...
 up.0.1/final/...
@@ -48,7 +47,7 @@ up.0.0/...
 up.0.1/...
 ```
 
-The app first checks `./data/sdxl/sae_weights`. If files are absent and automatic download is enabled, it downloads the needed upstream checkpoint directories from Hugging Face into `HAMBA_ARTIFACT_DIR`.
+The app first checks `./data/sdxl/sae_weights`. If files are absent and automatic download is enabled, it downloads only the runtime files it needs (`config.json`, `state_dict.pth`, `mean.pt`) from the matching upstream checkpoint directories into `HAMBA_ARTIFACT_DIR`.
 
 ## Environment Variables
 

@@ -29,6 +29,7 @@ Example:
 
 from .separator import StemSeparator
 from .features import StemFeatures, StemAnalyzer, extract_all_features
+from .library import SongLibrary, SongRecord
 from .perceptual import (
     EnvelopeConfig,
     DualLayerConfig,
@@ -112,6 +113,8 @@ __all__ = [
     "StemFeatures",
     "StemAnalyzer",
     "extract_all_features",
+    "SongLibrary",
+    "SongRecord",
     # Perceptual DSP
     "EnvelopeConfig",
     "DualLayerConfig",

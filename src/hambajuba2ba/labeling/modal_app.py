@@ -69,6 +69,7 @@ _UPSTREAM_SDXL_SAE_DIRS: dict[str, str] = {
     "up.0.0": "unet.up_blocks.0.attentions.0_k10_hidden5120_auxk256_bs4096_lr0.0001",
     "up.0.1": "unet.up_blocks.0.attentions.1_k10_hidden5120_auxk256_bs4096_lr0.0001",
 }
+_SAE_CHECKPOINT_FILES = ("config.json", "state_dict.pth", "mean.pt", "std.pt")
 
 # Container image: PyTorch + diffusers + SAE weights
 labeling_image = (
@@ -198,14 +199,14 @@ def resolve_sae_weights_root() -> Path:
 
 
 def artifact_allow_patterns() -> list[str]:
-    """Return narrow snapshot patterns for local and upstream checkpoint layouts."""
+    """Return exact SAE files for local and upstream checkpoint layouts."""
     prefix = ARTIFACT_WEIGHTS_SUBDIR.strip("/")
     patterns: list[str] = []
     for block in _UNET_BLOCK_PATHS:
         candidates = [f"{block}/final", block, _UPSTREAM_SDXL_SAE_DIRS[block]]
         for candidate in candidates:
             path = f"{prefix}/{candidate}" if prefix else candidate
-            patterns.append(f"{path}/*")
+            patterns.extend(f"{path}/{filename}" for filename in _SAE_CHECKPOINT_FILES)
     return patterns
 
 

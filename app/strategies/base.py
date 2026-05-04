@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from app.caching import CacheManager
 from app.generation import FrameItem
-from app.schemas import ExtendedStemActivity, TrackInfo
+from app.schemas import ExtendedStemActivity, SongIntelligenceMessage, TrackInfo
 from hambajuba2ba.audio.focus_config import BlockLinkConfig, get_base_stem
 from hambajuba2ba.audio.prominence import compute_all_prominences
 from hambajuba2ba.audio.sampler import AudioSampler
@@ -34,6 +34,9 @@ from hambajuba2ba.config import PipelineConfig
 from app.strategies.managers import FrameManager
 
 logger = logging.getLogger("uvicorn")
+
+BINARY_KIND_JPEG_FRAME = b"\x01"
+BINARY_KIND_SONG_CURVES = b"\x02"
 
 
 class GenerationStrategy(ABC):
@@ -102,14 +105,15 @@ class GenerationStrategy(ABC):
         self._lookahead_update_interval: float = 5.0
         self._last_lookahead_update: float = 0.0
 
-        # Steering mode (AUTO = prominence weighting, MANUAL = equal weight)
+        # Steering mode. AUTO allows auto_config derivation; MANUAL preserves
+        # explicit block configs. Prominence/rank scaling still applies later.
         self._auto_mode: bool = True
         self._last_activity_time: float = 0.0
         self._last_block_activity: Dict[str, Dict[str, float]] = {}
 
         # Noise seeds for composition
-        self._noise_seed_a: int = config.seed
-        self._noise_seed_b: int = config.seed + 1
+        self._noise_seed_a: int | None = config.seed
+        self._noise_seed_b: int | None = config.seed + 1
 
         # Track
         self._track_duration: float = 0.0
@@ -195,6 +199,23 @@ class GenerationStrategy(ABC):
         )
         await self.websocket.send_json(track_info.model_dump())
 
+        # Send song intelligence once per track setup. The packed curves are
+        # prefixed so the frontend can never confuse them with JPEG frames.
+        song_profile = cached.get("song_profile")
+        if song_profile is not None:
+            sections = cached.get("song_sections") or song_profile.get("sections", [])
+            await self.websocket.send_json(
+                SongIntelligenceMessage(
+                    audio_id=params.audio_id,
+                    profile=song_profile,
+                    sections=sections,
+                    analysis=cached.get("song_analysis"),
+                ).model_dump()
+            )
+            curves_binary = cached.get("song_curves_binary")
+            if curves_binary:
+                await self.websocket.send_bytes(BINARY_KIND_SONG_CURVES + curves_binary)
+
         # Backend-specific setup (prompt encoding, destinations, etc.)
         await self._setup_backend(params, cached)
 
@@ -255,12 +276,14 @@ class GenerationStrategy(ABC):
             device=engine.device,
             dtype=engine.dtype,
         )
-        noise_a = engine.make_noise(self._noise_seed_a)
-        noise_b = engine.make_noise(self._noise_seed_b)
-        self._composition.load_noise("a", noise_a, self._noise_seed_a)
-        self._composition.load_noise("b", noise_b, self._noise_seed_b)
+        if self._noise_seed_a is not None:
+            noise_a = engine.make_noise(self._noise_seed_a)
+            self._composition.load_noise("a", noise_a, self._noise_seed_a)
+        if self._noise_seed_b is not None:
+            noise_b = engine.make_noise(self._noise_seed_b)
+            self._composition.load_noise("b", noise_b, self._noise_seed_b)
         logger.info(
-            "CompositionEngine: seed_a=%d, seed_b=%d", self._noise_seed_a, self._noise_seed_b
+            "CompositionEngine: seed_a=%s, seed_b=%s", self._noise_seed_a, self._noise_seed_b
         )
 
         drums = self.stem_features.get("drums")
@@ -424,7 +447,7 @@ class GenerationStrategy(ABC):
                 items.append(
                     FrameItem(
                         kind="frame",
-                        payload=prev_jpeg,
+                        payload=self._binary_frame_payload(prev_jpeg),
                         due_ts=self._compute_due_ts(t_start),
                         produced_at=self._prev_frame_t_start or t_start,
                     )
@@ -470,7 +493,7 @@ class GenerationStrategy(ABC):
             items.append(
                 FrameItem(
                     kind="frame",
-                    payload=prev_jpeg,
+                    payload=self._binary_frame_payload(prev_jpeg),
                     due_ts=self._compute_due_ts(t_start),
                     produced_at=self._prev_frame_t_start or t_start,
                 )
@@ -508,8 +531,12 @@ class GenerationStrategy(ABC):
     # Shared concrete methods — used by all backends
     # ------------------------------------------------------------------
 
+    def _binary_frame_payload(self, jpeg: bytes) -> bytes:
+        """Prefix JPEG frames with an explicit binary kind byte."""
+        return BINARY_KIND_JPEG_FRAME + jpeg
+
     def _get_slot_configs(self) -> Dict[str, BlockLinkConfig]:
-        """Return active slot configs with global auto override applied."""
+        """Return active slot configs with global auto_config override applied."""
         if self._auto_mode:
             return self.slot_configs
         return {

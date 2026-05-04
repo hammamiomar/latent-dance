@@ -50,6 +50,7 @@ export function Visualizer(props: AppCore) {
     isPlayerMinimized,
     // WebSocket sends
     sendSetDestination,
+    sendClearDestination,
     sendSetCompositionConfig,
     sendStopGeneration,
     sendAudioPlay,
@@ -228,7 +229,8 @@ export function Visualizer(props: AppCore) {
           useDestinationStore.getState().setDestination('latent', slot, { type: 'seed', label: `Seed ${seed}`, seed });
         }}
         onClearDestination={(slot) => {
-          useDestinationStore.getState().setDestination('latent', slot, null);
+          sendClearDestination('latent', slot);
+          useDestinationStore.getState().clearDestination('latent', slot);
         }}
         onSetCompositionConfig={sendSetCompositionConfig}
       />

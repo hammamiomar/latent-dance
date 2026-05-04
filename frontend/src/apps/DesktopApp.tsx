@@ -23,7 +23,6 @@ import { FaceRenderer } from "../components/character/FaceRenderer";
 import { BellyScreen } from "../components/character/BellyScreen";
 import { Appendages } from "../components/character/Appendages";
 import { ModeBar, type BellyMode } from "../components/character/ModeBar";
-import { SettingsOverlay } from "../components/character/SettingsOverlay";
 import { DataOverlay } from "../components/character/DataOverlay";
 import { EngravedLogo } from "../components/character/EngravedLogo";
 
@@ -112,7 +111,6 @@ export function DesktopApp() {
             <div className="absolute inset-0 z-[10200] mode-transition-static pointer-events-none" />
           )}
 
-          {activeMode === "settings" && <SettingsOverlay />}
           {activeMode === "data" && <DataOverlay />}
         </BellyScreen>
       </div>

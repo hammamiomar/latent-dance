@@ -5,6 +5,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"hambajuba2ba.integrations.hermes" = ["skill/SKILL.md"]
+
 [project]
 name = "hambajuba2ba"
 version = "0.1.0"
@@ -37,7 +40,10 @@ dependencies = [
   "opensimplex>=0.4",    # Perlin-like noise for sustained physics
   "pesto-pitch",         # Monophonic pitch tracking (vocals, bass)
   "basic-pitch",         # Polyphonic pitch tracking (piano, synths)
-  "onnxruntime",         # ONNX backend for basic-pitch (TF is broken with numpy 2.x)
+  # ONNX backend for Basic Pitch on local/CPU installs. On Linux x86_64 CUDA
+  # runs, audio-gpu installs onnxruntime-gpu instead; installing both packages
+  # makes the CPU wheel mask CUDAExecutionProvider.
+  "onnxruntime ; sys_platform != 'linux' or platform_machine != 'x86_64'",
   # PyTorch — source index selected by platform in [tool.uv.sources]:
   # macOS → pytorch-cpu, Linux → pytorch-cu128 (Blackwell sm_120)
   "torch>=2.8",
@@ -51,12 +57,15 @@ dependencies = [
 # Audio processing: audio-separator (Demucs wrapper) + yt-dlp for YouTube
 audio = [
   "audio-separator[cpu]",
+  "setuptools>=70",       # audio-separator still imports pkg_resources.
   "yt-dlp>=2024.0.0",
 ]
 
 # Audio with GPU acceleration (CUDA)
 audio-gpu = [
   "audio-separator[gpu]",
+  "setuptools>=70",       # audio-separator still imports pkg_resources.
+  "onnxruntime-gpu ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "yt-dlp>=2024.0.0",
   # Beat tracking: Beat This! (ISMIR 2024) - state-of-the-art, PyTorch-native
   "beat-this @ git+https://github.com/CPJKU/beat_this.git",
@@ -84,6 +93,15 @@ labeling-modal = [
   "modal>=0.73",
 ]
 
+hermes = [
+  "httpx>=0.27",
+  "mcp>=1.13",
+]
+
+hermes-semantic = [
+  "sentence-transformers>=3.0",
+]
+
 trt = [
   "tensorrt-cu12 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "tensorrt-cu12-libs ; sys_platform == 'linux' and platform_machine == 'x86_64'",
@@ -91,7 +109,7 @@ trt = [
   "polygraphy ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "cuda-python==12.8 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "onnx ; sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "onnxruntime ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "onnxruntime-gpu ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "onnx-graphsurgeon ; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
@@ -158,6 +176,8 @@ explicit = true
 
 [project.scripts]
 hambajuba = "hambajuba2ba.cli:serve"
+hambajuba-hermes-mcp = "hambajuba2ba.integrations.hermes.mcp_server:main"
+hambajuba-feature-embeddings = "hambajuba2ba.integrations.hermes.feature_embedding_cli:main"
 
 [dependency-groups]
 dev = [

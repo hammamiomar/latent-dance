@@ -539,24 +539,29 @@ export function AudioPlayerWindow({
 
         {(visualState === "ready" || visualState === "generating") && (
           <div className="flex gap-1 pt-2 border-t" style={{ borderColor: "var(--color-panel-border)" }}>
-            {STEMS.map((stem) => (
-              <div key={stem} className="flex-1 flex flex-col items-center gap-1">
-                <Win95Button
-                  className={`text-xxs w-full ${stemMuted[stem] ? "" : "win95-button--primary"}`}
-                  onClick={() => toggleStemMute(stem)}
-                  style={{ borderColor: stemMuted[stem] ? undefined : `var(--color-stem-${stem})` }}
+            {STEMS.map((stem) => {
+              return (
+                <div
+                  key={stem}
+                  className="flex-1 flex flex-col items-center gap-1"
                 >
-                  {STEM_LABELS[stem]}
-                </Win95Button>
-                <Win95Slider
-                  value={stemVolumes[stem] * 100}
-                  min={0}
-                  max={100}
-                  onChange={(v) => setStemVolume(stem, v / 100)}
-                  className="w-full"
-                />
-              </div>
-            ))}
+                  <Win95Button
+                    className={`text-xxs w-full px-1 ${stemMuted[stem] ? "" : "win95-button--primary"}`}
+                    onClick={() => toggleStemMute(stem)}
+                    style={{ borderColor: stemMuted[stem] ? undefined : `var(--color-stem-${stem})` }}
+                  >
+                    {STEM_LABELS[stem]}
+                  </Win95Button>
+                  <Win95Slider
+                    value={stemVolumes[stem] * 100}
+                    min={0}
+                    max={100}
+                    onChange={(v) => setStemVolume(stem, v / 100)}
+                    className="w-full"
+                  />
+                </div>
+              );
+            })}
             <div className="flex-1 flex flex-col items-center gap-1">
               <Win95Button className="text-xxs w-full">MST</Win95Button>
               <Win95Slider

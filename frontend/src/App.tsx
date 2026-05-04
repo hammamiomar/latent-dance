@@ -8,13 +8,15 @@
 
 import { IS_DESKTOP_MODE } from "./constants";
 import { BrowserApp } from "./apps/BrowserApp";
+import { BrainApp } from "./apps/BrainApp";
 import { DesktopApp } from "./apps/DesktopApp";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function App() {
+  const isBrainWindow = window.location.pathname === "/brain";
   return (
     <ErrorBoundary>
-      {IS_DESKTOP_MODE ? <DesktopApp /> : <BrowserApp />}
+      {isBrainWindow ? <BrainApp /> : IS_DESKTOP_MODE ? <DesktopApp /> : <BrowserApp />}
     </ErrorBoundary>
   );
 }

@@ -43,6 +43,9 @@ interface DestinationStore {
     destination: Destination | null
   ) => void;
 
+  /** Clear a destination slot, promoting B to A when clearing A */
+  clearDestination: (space: DestinationSpace, slot: DestinationSlot) => void;
+
   /** Set blend position (slider mode) */
   setBlendPosition: (space: DestinationSpace, position: number) => void;
 
@@ -87,6 +90,30 @@ export const useDestinationStore = create<DestinationStore>((set) => ({
         [slot === 'a' ? 'destinationA' : 'destinationB']: destination,
       },
     }));
+  },
+
+  clearDestination: (space, slot) => {
+    set((state) => {
+      const current = state[space];
+      if (slot === 'a') {
+        return {
+          [space]: {
+            ...current,
+            destinationA: current.destinationB,
+            destinationB: null,
+            blendPosition: 0,
+          },
+        };
+      }
+
+      return {
+        [space]: {
+          ...current,
+          destinationB: null,
+          blendPosition: 0,
+        },
+      };
+    });
   },
 
   setBlendPosition: (space, position) => {

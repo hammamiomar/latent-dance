@@ -26,6 +26,7 @@ import {
 import { useAudioActivityStore } from "../stores/useAudioActivityStore";
 import { useCanvasSamplingManual } from "./useCanvasSampling";
 import { useDestinationStore } from "../stores/useDestinationStore";
+import { useCompositionStore } from "../stores/useCompositionStore";
 import { useShallow } from "zustand/shallow";
 import { usePerfStore } from "../stores/usePerfStore";
 import type {
@@ -33,6 +34,7 @@ import type {
   DestinationStatusMessage,
 } from "../types/destinations";
 import { useDestinationHandlers } from "./useDestinationHandlers";
+import { useAgentBridge } from "./useAgentBridge";
 import type { ExtendedStemActivityMessage } from "../types/sae";
 
 // ============================================================================
@@ -187,6 +189,7 @@ export function useAppCore(dimensions: { width: number; height: number }) {
     sendAudioSeek,
     sendSetSteeringMode,
     sendSetDestination,
+    sendClearDestination,
     sendFreezeBlend,
     sendSetBlendPosition,
     sendSetDestinationMode,
@@ -271,7 +274,36 @@ export function useAppCore(dimensions: { width: number; height: number }) {
       // 3. Sync steering mode from frontend to backend
       sendSetSteeringMode(steeringMode);
 
-      // 4. Sync destination state to backend
+      // 4. Sync staged frontend control state to backend. This is what lets the
+      // agent create a complete visual while generation is idle.
+      const currentBlockMappings = useBlockStore.getState().blockMappings;
+      for (const mapping of Object.values(currentBlockMappings)) {
+        sendUpdateBlockConfig({
+          action: 'update_block_config',
+          block: mapping.block,
+          link_target: mapping.linkTarget,
+          feature_id: mapping.featureId,
+          enabled: mapping.enabled,
+          auto_config: mapping.autoConfig,
+          sae_rank: mapping.saeRank,
+          spatial_mode: mapping.spatialMode,
+          spatial_mask: mapping.spatialMask,
+          stage_left: mapping.strengthRange.strengthMin,
+          stage_home: mapping.strengthRange.stageHome,
+          stage_right: mapping.strengthRange.strengthMax,
+          intensity_source: mapping.intensitySource,
+          intensity_curve: mapping.intensityCurve,
+          intensity_gamma: mapping.intensityGamma,
+        });
+      }
+
+      const composition = useCompositionStore.getState();
+      sendSetCompositionConfig({
+        distance: composition.distance,
+        mode: composition.mode,
+      });
+
+      // 5. Sync destination state to backend
       const latentDest = useDestinationStore.getState().latent;
       const promptDest = useDestinationStore.getState().prompt;
 
@@ -304,7 +336,7 @@ export function useAppCore(dimensions: { width: number; height: number }) {
 
       console.log(`[handlePlayAll] Synced destinations: latent=${latentDest.destinationA?.label ?? 'none'}->${latentDest.destinationB?.label ?? 'none'}, prompt=${promptDest.destinationA?.label ?? 'none'}->${promptDest.destinationB?.label ?? 'none'}`);
     }
-  }, [audioId, connect, sendStartSAESteering, waitFor, steeringMode, sendSetSteeringMode, sendSetDestination, sendSetDestinationMode, sendSetReactiveConfig, sendSetDestinationLink]);
+  }, [audioId, connect, sendStartSAESteering, waitFor, steeringMode, sendSetSteeringMode, sendUpdateBlockConfig, sendSetCompositionConfig, sendSetDestination, sendSetDestinationMode, sendSetReactiveConfig, sendSetDestinationLink]);
 
   // ========================================
   // Block Config Handlers (extracted hook)
@@ -338,11 +370,26 @@ export function useAppCore(dimensions: { width: number; height: number }) {
     handlePromptSetLinkTarget,
   } = useDestinationHandlers({
     sendSetDestination,
+    sendClearDestination,
     sendFreezeBlend,
     sendSetBlendPosition,
     sendSetDestinationMode,
     sendSetReactiveConfig,
     sendSetDestinationLink,
+  });
+
+  const agentBridge = useAgentBridge({
+    generationStatus: status,
+    isGenerating,
+    sendUpdateBlockConfig,
+    sendSetDestination,
+    sendClearDestination,
+    sendFreezeBlend,
+    sendSetBlendPosition,
+    sendSetDestinationMode,
+    sendSetReactiveConfig,
+    sendSetDestinationLink,
+    sendSetCompositionConfig,
   });
 
   // ========================================
@@ -483,6 +530,7 @@ export function useAppCore(dimensions: { width: number; height: number }) {
     promptDestinations,
     selectedSpace,
     perfStats,
+    agentBridge,
 
     // WebSocket
     status,
@@ -491,6 +539,7 @@ export function useAppCore(dimensions: { width: number; height: number }) {
 
     // WebSocket sends (used in render)
     sendSetDestination,
+    sendClearDestination,
     sendSetCompositionConfig,
     sendStopGeneration,
     sendAudioPlay,

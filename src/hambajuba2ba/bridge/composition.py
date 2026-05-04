@@ -245,9 +245,41 @@ class CompositionEngine:
             self._has_b = True
             self._seed_b = seed
 
+    def clear_noise(self, slot: str) -> None:
+        """Clear one noise slot while keeping GPU buffers allocated.
+
+        Clearing A promotes B into A when B exists. This mirrors the UI
+        destination behavior and avoids a B-only state that cannot produce a
+        valid A→B circular walk.
+        """
+        if slot == "a":
+            if self._has_b:
+                self._noise_a.copy_(self._noise_b)
+                self._seed_a = self._seed_b
+                self._has_a = True
+                self._has_b = False
+                self._seed_b = None
+            else:
+                self._has_a = False
+                self._seed_a = None
+            return
+
+        self._has_b = False
+        self._seed_b = None
+
     def has_both(self) -> bool:
         """Check if both noise buffers are loaded."""
         return self._has_a and self._has_b
+
+    @property
+    def seed_a(self) -> int | None:
+        """Seed currently loaded in slot A, if any."""
+        return self._seed_a
+
+    @property
+    def seed_b(self) -> int | None:
+        """Seed currently loaded in slot B, if any."""
+        return self._seed_b
 
     def load_motion(
         self,

@@ -201,11 +201,14 @@ class AudioSampler:
         if frame < 0:
             return 0
         # Clamp to longest stem's array length
-        max_frames = 0
-        for features in self.stem_features.values():
-            if features.energy_smooth is not None:
-                max_frames = max(max_frames, len(features.energy_smooth) - 1)
-                break  # All stems have same length
+        max_frames = next(
+            (
+                len(features.energy_smooth) - 1
+                for features in self.stem_features.values()
+                if features.energy_smooth is not None
+            ),
+            0,
+        )
         if max_frames > 0 and frame > max_frames:
             return max_frames
         return frame

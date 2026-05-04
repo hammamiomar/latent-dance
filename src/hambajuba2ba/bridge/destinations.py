@@ -14,7 +14,6 @@ from typing import Dict, Literal, Optional, Tuple
 import torch
 
 from hambajuba2ba.audio.focus_config import DANCE_MODEL_DEFAULTS
-from hambajuba2ba.bridge.physics import SteeringPhysics, get_physics_preset
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +134,7 @@ class ReactiveConfig:
     position_smoothing_ms: float = DANCE_MODEL_DEFAULTS["position_smoothing_ms"]
     silence_behavior: Literal["drift_center", "hold_last"] = DANCE_MODEL_DEFAULTS["silence_behavior"]
     drift_ms: float = DANCE_MODEL_DEFAULTS["drift_ms"]
-    intensity_curve: Literal["linear", "gamma", "impulse", "clip"] = DANCE_MODEL_DEFAULTS["intensity_curve"]
+    intensity_curve: Literal["linear", "gamma", "clip"] = DANCE_MODEL_DEFAULTS["intensity_curve"]
     intensity_gamma: float = DANCE_MODEL_DEFAULTS["intensity_gamma"]
 
     # v4 global weights
@@ -178,20 +177,14 @@ def apply_intensity_curve(
     value: float,
     curve: str,
     gamma: float,
-    dt: float,
-    physics: Optional[SteeringPhysics],
-) -> Tuple[float, Optional[SteeringPhysics]]:
-    """Apply intensity curve, optionally using physics for impulse behavior."""
+) -> float:
+    """Apply the configured intensity shaping curve."""
     if curve == "gamma":
-        return max(0.0, min(1.0, value)) ** max(0.01, gamma), physics
+        return max(0.0, min(1.0, value)) ** max(0.01, gamma)
     if curve == "clip":
-        return max(0.0, min(1.0, value * 1.5)), physics
-    if curve == "impulse":
-        if physics is None:
-            physics = SteeringPhysics(get_physics_preset("drums"))
-        return max(0.0, min(1.0, physics.step(value, dt))), physics
+        return max(0.0, min(1.0, value * 1.5))
     # linear (default)
-    return max(0.0, min(1.0, value)), physics
+    return max(0.0, min(1.0, value))
 
 
 class DestinationModulator:
@@ -255,9 +248,6 @@ class DestinationModulator:
 
         # Link target for "linked" mode (audio-driven SLERP)
         self.link_target: Optional[str] = None
-
-        # Physics (for reactive mode, created lazily)
-        self._physics: Optional[SteeringPhysics] = None
 
         # Position follower for dance motion
         self._position_follower: Optional[PositionFollower] = None
@@ -427,8 +417,8 @@ class DestinationModulator:
         target = None if is_silent else position
         pos = self._position_follower.step(target, dt, cfg.silence_behavior)
 
-        intensity_value, self._physics = apply_intensity_curve(
-            intensity, cfg.intensity_curve, cfg.intensity_gamma, dt, self._physics
+        intensity_value = apply_intensity_curve(
+            intensity, cfg.intensity_curve, cfg.intensity_gamma
         )
 
         raw_blend = self._apply_stage(pos, intensity_value, cfg)
@@ -451,8 +441,8 @@ class DestinationModulator:
         target = None if is_silent else position
         pos = self._position_follower.step(target, dt, cfg.silence_behavior)
 
-        intensity_value, self._physics = apply_intensity_curve(
-            intensity, cfg.intensity_curve, cfg.intensity_gamma, dt, self._physics
+        intensity_value = apply_intensity_curve(
+            intensity, cfg.intensity_curve, cfg.intensity_gamma
         )
 
         raw_blend = self._apply_stage(pos, intensity_value, cfg)
@@ -600,7 +590,23 @@ class DestinationModulator:
         which: Literal["a", "b"],
         new_dest: Destination,
     ) -> None:
-        """Replace a destination with node-to-node transition.
+        """Legacy wrapper for node-to-node transition replacement.
+
+        The `which` parameter is used only when fewer than two destinations are
+        loaded. Once both slots exist, smooth replacement always travels from
+        the current blend to the new destination.
+        """
+        if self.destination_a is None or self.destination_b is None:
+            if which == "a":
+                self.load_a(new_dest)
+            else:
+                self.load_b(new_dest)
+            return
+
+        self.replace_from_blend(new_dest)
+
+    def replace_from_blend(self, new_dest: Destination) -> None:
+        """Replace destination B with a transition from the current blend.
 
         When both destinations exist:
         1. Compute current blended result
@@ -612,15 +618,10 @@ class DestinationModulator:
         FROM where you are TO somewhere new.
 
         Args:
-            which: Which slot to replace ("a" or "b")
             new_dest: New destination to load
         """
         if self.destination_a is None or self.destination_b is None:
-            # Simple load, no transition needed
-            if which == "a":
-                self.load_a(new_dest)
-            else:
-                self.load_b(new_dest)
+            self.load_b(new_dest)
             return
 
         # Freeze current blended state as new A
@@ -646,9 +647,22 @@ class DestinationModulator:
         self.destination_b = new_dest
         self.blend_position = 0.0  # We're now AT the frozen state
 
-        # Reset physics if in reactive mode (start fresh toward new target)
-        if self._physics is not None:
-            self._physics.reset(position=0.0)
+    def clear_destination(self, which: Literal["a", "b"]) -> None:
+        """Clear one destination slot.
+
+        Clearing A promotes B into A when possible so the modulator never gets
+        stuck with only an unusable B slot.
+        """
+        if which == "a":
+            if self.destination_b is not None:
+                self.destination_a = self.destination_b
+                self.destination_b = None
+            else:
+                self.destination_a = None
+            self.blend_position = 0.0
+        else:
+            self.destination_b = None
+            self.blend_position = 0.0
 
     def freeze_blend_to(self, target: Literal["a", "b"]) -> None:
         """Capture current blended result into target slot.
@@ -691,14 +705,9 @@ class DestinationModulator:
             # At position 0 is still A, position 1 is the frozen blend
             self.blend_position = 1.0
 
-        if self._physics is not None:
-            self._physics.reset(position=self.blend_position)
-
     def reset(self) -> None:
-        """Reset blend position and physics to initial state."""
+        """Reset blend position to initial state."""
         self.blend_position = 0.0
-        if self._physics is not None:
-            self._physics.reset()
 
     def has_destinations(self) -> bool:
         """Check if at least one destination is loaded.
@@ -743,5 +752,3 @@ class DestinationModulator:
             "blend_position": self.blend_position,
             "mode": self.mode,
         }
-
-

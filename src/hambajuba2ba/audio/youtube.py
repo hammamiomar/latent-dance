@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import glob
 import logging
+import os
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -75,6 +76,17 @@ def download_audio(
             info = ydl.extract_info(url, download=True)
             title = info.get("title", "audio")
 
+            prepared_path = Path(ydl.prepare_filename(info))
+            if prepared_path.exists():
+                logger.info(f"Downloaded: {prepared_path}")
+                return str(prepared_path)
+
+            for download in info.get("requested_downloads") or []:
+                filepath = download.get("filepath")
+                if filepath and Path(filepath).exists():
+                    logger.info(f"Downloaded: {filepath}")
+                    return str(filepath)
+
             # Find the actual downloaded file (extension varies: webm, m4a, opus, etc.)
             if filename:
                 safe_name = filename
@@ -90,7 +102,7 @@ def download_audio(
                     f"Download succeeded but file not found: {pattern}"
                 )
 
-            final_path = matches[0]
+            final_path = max(matches, key=os.path.getmtime)
             logger.info(f"Downloaded: {final_path}")
             return final_path
 

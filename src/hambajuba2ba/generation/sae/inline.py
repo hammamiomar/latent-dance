@@ -77,6 +77,9 @@ class SteeredModule(nn.Module):
         self.register_buffer(
             "activation_map", torch.ones(1, 1, 1, dtype=dt, device=dev)
         )
+        self._activation_map_initialized = False
+        self._target_h = 1
+        self._target_w = 1
 
     # ---- Per-feature setup (called when feature_id changes) ---------------
 
@@ -111,23 +114,23 @@ class SteeredModule(nn.Module):
         shape is baked into the CUDA graph. Use update_activation_map() for
         per-frame in-place updates.
         """
-        if "activation_map" in dict(self.named_buffers()):
+        shape = (1, height, width)
+        if self._activation_map_initialized:
+            if tuple(self.activation_map.shape) == shape:
+                return
             raise RuntimeError(
-                "activation_map buffer already registered — "
-                "re-registering post-compile would break the CUDA graph"
+                "activation_map already initialized with shape "
+                f"{tuple(self.activation_map.shape)}; refusing to resize to {shape}"
             )
+
         self._target_h = height
         self._target_w = width
-        self.register_buffer(
-            "activation_map",
-            torch.ones(
-                1,
-                height,
-                width,
-                dtype=self.decoder_weight.dtype,
-                device=self.decoder_weight.device,
-            ),
+        self.activation_map = torch.ones(
+            shape,
+            dtype=self.decoder_weight.dtype,
+            device=self.decoder_weight.device,
         )
+        self._activation_map_initialized = True
 
     def update_activation_map(self, values: torch.Tensor) -> None:
         """Update activation map in-place (compile-safe).

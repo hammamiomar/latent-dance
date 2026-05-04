@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import Request, WebSocket
 
 from hambajuba2ba.config import PipelineConfig
+from hambajuba2ba.audio.library import SongLibrary
 from hambajuba2ba.generation.pipeline import SAESteerablePipeline
 
 from .caching import CacheManager
@@ -27,6 +28,11 @@ def get_config(request: Request) -> PipelineConfig:
 def get_audio_cache(request: Request) -> CacheManager:
     """Dependency provider for audio feature cache (HTTP endpoints)."""
     return request.app.state.audio_cache
+
+
+def get_song_library(request: Request) -> SongLibrary:
+    """Dependency provider for persistent song library (HTTP endpoints)."""
+    return request.app.state.song_library
 
 
 # WebSocket endpoint dependencies (use WebSocket)

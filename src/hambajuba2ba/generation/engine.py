@@ -17,6 +17,8 @@ All constants are pre-computed at init. The compiled graph has zero Python overh
 from __future__ import annotations
 
 import logging
+import time
+
 import torch
 
 logger = logging.getLogger(__name__)
@@ -144,16 +146,29 @@ class SDXLTurboEngine:
         dummy_pe = torch.randn(1, 77, 2048, device=self.device, dtype=self.dtype)
         dummy_pool = torch.randn(1, 1280, device=self.device, dtype=self.dtype)
 
-        logger.info("Running %d warmup iterations ...", warmup_iters)
+        logger.info(
+            "Running %d warmup iterations; first iteration performs torch.compile",
+            warmup_iters,
+        )
+        warmup_start = time.perf_counter()
         with torch.inference_mode():
             for i in range(warmup_iters):
+                iter_start = time.perf_counter()
+                logger.info("  warmup %d/%d starting", i + 1, warmup_iters)
                 _ = self._compiled_generate(
                     dummy_latent, dummy_noise, dummy_pe, dummy_pool
                 )
-                if i == 0:
-                    logger.info("  warmup 1/%d complete (graph compiled)", warmup_iters)
+                elapsed = time.perf_counter() - iter_start
+                suffix = " (graph compiled)" if i == 0 else ""
+                logger.info(
+                    "  warmup %d/%d complete in %.1fs%s",
+                    i + 1,
+                    warmup_iters,
+                    elapsed,
+                    suffix,
+                )
         torch.cuda.synchronize()
-        logger.info("Engine warmup complete")
+        logger.info("Engine warmup complete in %.1fs", time.perf_counter() - warmup_start)
 
     # ------------------------------------------------------------------
     # Seed / noise management

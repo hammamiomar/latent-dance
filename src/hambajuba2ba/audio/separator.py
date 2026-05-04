@@ -149,6 +149,10 @@ class StemSeparator:
         # Files are kept for caching (not using temp dir)
         output_files = self._separator.separate(audio_path)
         logger.info(f"Separation produced {len(output_files)} files in {self.output_dir}")
+        if not output_files:
+            raise RuntimeError(
+                "Stem separation failed: audio-separator produced no output files"
+            )
 
         # Load each stem file as numpy array
         stems = {}
@@ -175,6 +179,13 @@ class StemSeparator:
             audio, sr = librosa.load(str(filepath), sr=sample_rate, mono=True)
             stems[stem_name] = audio.astype(np.float32)
             logger.debug(f"Loaded {stem_name}: {len(audio)} samples")
+
+        missing = sorted(set(self.STEM_NAMES) - set(stems))
+        if missing:
+            raise RuntimeError(
+                "Stem separation failed: missing required stems "
+                + ", ".join(missing)
+            )
 
         logger.info(f"Separation complete: {list(stems.keys())}")
         return stems

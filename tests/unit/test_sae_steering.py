@@ -112,6 +112,52 @@ class TestUpdateStrengths:
         assert torch.equal(manager.steered_modules["down.2.1"].direction, direction_before)
 
 
+class TestActivationMaps:
+    """Tests for fixed-size spatial activation map setup."""
+
+    def test_init_activation_maps_replaces_placeholder_buffer(self, mock_sae_weights):
+        """init_activation_maps should resize the constructor placeholder once."""
+        unet = create_mock_unet()
+        manager = InlineSAEManager(
+            unet, str(mock_sae_weights), device="cpu", dtype=torch.float32,
+            blocks=["down.2.1"],
+        )
+
+        module = manager.steered_modules["down.2.1"]
+        assert tuple(module.activation_map.shape) == (1, 1, 1)
+
+        manager.init_activation_maps(latent_h=64, latent_w=64)
+
+        assert tuple(module.activation_map.shape) == (1, 16, 16)
+        assert tuple(dict(module.named_buffers())["activation_map"].shape) == (1, 16, 16)
+
+    def test_init_activation_maps_is_idempotent_for_same_shape(self, mock_sae_weights):
+        """Same-shape init is safe when setup is replayed before compile."""
+        unet = create_mock_unet()
+        manager = InlineSAEManager(
+            unet, str(mock_sae_weights), device="cpu", dtype=torch.float32,
+            blocks=["down.2.1"],
+        )
+
+        manager.init_activation_maps(latent_h=64, latent_w=64)
+        manager.init_activation_maps(latent_h=64, latent_w=64)
+
+        assert tuple(manager.steered_modules["down.2.1"].activation_map.shape) == (1, 16, 16)
+
+    def test_init_activation_maps_rejects_shape_change(self, mock_sae_weights):
+        """Changing the fixed map shape after init would break compiled assumptions."""
+        unet = create_mock_unet()
+        manager = InlineSAEManager(
+            unet, str(mock_sae_weights), device="cpu", dtype=torch.float32,
+            blocks=["down.2.1"],
+        )
+
+        manager.init_activation_maps(latent_h=64, latent_w=64)
+
+        with pytest.raises(RuntimeError, match="activation_map already initialized"):
+            manager.init_activation_maps(latent_h=128, latent_w=128)
+
+
 class TestClearHooks:
     """Tests for clear_hooks method."""
 

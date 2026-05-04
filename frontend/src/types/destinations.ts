@@ -136,6 +136,12 @@ export interface SetDestinationMessage {
   replace_mode: ReplaceMode;
 }
 
+export interface ClearDestinationMessage {
+  action: 'clear_destination';
+  space: DestinationSpace;
+  slot: DestinationSlot;
+}
+
 export interface FreezeBlendMessage {
   action: 'freeze_blend';
   space: DestinationSpace;
@@ -198,6 +204,7 @@ export interface SetDestinationLinkMessage {
 
 export type DestinationClientMessage =
   | SetDestinationMessage
+  | ClearDestinationMessage
   | FreezeBlendMessage
   | SetBlendPositionMessage
   | SetDestinationModeMessage

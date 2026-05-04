@@ -51,7 +51,7 @@ function ArticulatedArm({
 
   return (
     <div
-      className="absolute pointer-events-none z-20"
+      className="absolute pointer-events-none z-[10300]"
       style={{
         width: "20%",
         top: "-2%",

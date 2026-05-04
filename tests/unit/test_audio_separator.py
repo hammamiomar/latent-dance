@@ -5,6 +5,7 @@ catch the NaN bug in bandpass filtering that was causing librosa errors.
 """
 
 import numpy as np
+import pytest
 
 from hambajuba2ba.audio import StemSeparator
 
@@ -83,6 +84,40 @@ class TestStemSeparator:
         # All stems should have data (resampled)
         for data in stems.values():
             assert len(data) > 0
+
+    def test_real_separator_empty_output_fails_fast(self, temp_audio_file):
+        """audio-separator can log an internal error and return no files."""
+
+        class EmptySeparator:
+            def separate(self, _audio_path):
+                return []
+
+        sep = StemSeparator(device="cpu")
+        sep._separator = EmptySeparator()
+
+        with pytest.raises(RuntimeError, match="produced no output files"):
+            sep.separate_sync(temp_audio_file)
+
+    def test_real_separator_missing_stems_fails_fast(
+        self,
+        temp_audio_file,
+        tmp_path,
+    ):
+        """Do not let partial separation results reach feature extraction."""
+        import soundfile as sf
+
+        bass_path = tmp_path / "song_(Bass).wav"
+        sf.write(bass_path, np.zeros(1024, dtype=np.float32), 44100)
+
+        class PartialSeparator:
+            def separate(self, _audio_path):
+                return [str(bass_path)]
+
+        sep = StemSeparator(device="cpu")
+        sep._separator = PartialSeparator()
+
+        with pytest.raises(RuntimeError, match="missing required stems"):
+            sep.separate_sync(temp_audio_file)
 
 
 class TestBandpassFilter:

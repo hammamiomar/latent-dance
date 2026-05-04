@@ -8,7 +8,10 @@
   },
   "scripts": {
     "build:native": "bash scripts/build-native.sh",
-    "dev": "bun run build:native && electrobun dev",
+    "dev": "bun run dev:app",
+    "dev:app": "bun run build:native && electrobun dev",
+    "dev:hermes": "bun --env-file=$HOME/.hermes/.env run dev:app",
+    "test": "bun test src/bun/*.test.ts",
     "build:canary": "electrobun build --env=canary",
     "build:stable": "electrobun build --env=stable"
   },

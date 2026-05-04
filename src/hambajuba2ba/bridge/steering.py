@@ -139,8 +139,8 @@ class SteeringComputation:
 
             # 2b. Apply intensity curve if non-linear
             if config.intensity_curve in ("gamma", "clip"):
-                physics_value, _ = apply_intensity_curve(
-                    physics_value, config.intensity_curve, config.intensity_gamma, dt, None
+                physics_value = apply_intensity_curve(
+                    physics_value, config.intensity_curve, config.intensity_gamma
                 )
 
             # 3. Map to strength range

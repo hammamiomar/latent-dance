@@ -14,6 +14,7 @@ import type { LinkTarget } from '../types/sae';
 
 interface DestinationSenders {
   sendSetDestination: (space: DestinationSpace, slot: DestinationSlot, destinationType: DestinationType, value: { seed?: number; prompt?: string }) => void;
+  sendClearDestination: (space: DestinationSpace, slot: DestinationSlot) => void;
   sendFreezeBlend: (space: DestinationSpace, slot: DestinationSlot) => void;
   sendSetBlendPosition: (space: DestinationSpace, position: number) => void;
   sendSetDestinationMode: (space: DestinationSpace, mode: DestinationMode) => void;
@@ -24,6 +25,7 @@ interface DestinationSenders {
 export function useDestinationHandlers(senders: DestinationSenders) {
   const {
     sendSetDestination,
+    sendClearDestination,
     sendFreezeBlend,
     sendSetBlendPosition,
     sendSetDestinationMode,
@@ -38,8 +40,9 @@ export function useDestinationHandlers(senders: DestinationSenders) {
   }, [sendSetDestination]);
 
   const handleClearPromptDestination = useCallback((slot: DestinationSlot) => {
-    useDestinationStore.getState().setDestination('prompt', slot, null);
-  }, []);
+    sendClearDestination('prompt', slot);
+    useDestinationStore.getState().clearDestination('prompt', slot);
+  }, [sendClearDestination]);
 
   const handlePromptFreezeBlend = useCallback((targetSlot: DestinationSlot) => {
     sendFreezeBlend('prompt', targetSlot);

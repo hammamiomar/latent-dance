@@ -131,13 +131,6 @@ class SAESteerablePipeline:
 
         # Explicitly set to evaluation mode (disables dropout, uses running stats for batchnorm)
         self.pipe.unet.train(False)
-        self.pipe.vae.train(False)
-
-        # CUDA optimizations
-        if self.device == "cuda":
-            self.pipe.unet = self.pipe.unet.to(memory_format=torch.channels_last)
-            self.pipe.vae = self.pipe.vae.to(memory_format=torch.channels_last)
-            torch.backends.cudnn.benchmark = True
 
         # TinyVAE: 2x faster decode
         if self.config.use_tiny_vae:
@@ -146,9 +139,14 @@ class SAESteerablePipeline:
                 self.config.sdxl_vae_id,
                 torch_dtype=self.config.get_torch_dtype(),
             ).to(self.device)
-            self.pipe.vae.train(False)
-            if self.device == "cuda":
-                self.pipe.vae = self.pipe.vae.to(memory_format=torch.channels_last)
+
+        self.pipe.vae.train(False)
+
+        # CUDA optimizations
+        if self.device == "cuda":
+            self.pipe.unet = self.pipe.unet.to(memory_format=torch.channels_last)
+            self.pipe.vae = self.pipe.vae.to(memory_format=torch.channels_last)
+            torch.backends.cudnn.benchmark = True
 
     @property
     def steering_manager(self) -> InlineSAEManager | None:

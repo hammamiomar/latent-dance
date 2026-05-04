@@ -8,7 +8,9 @@ import pytest
 import torch
 
 from hambajuba2ba.artifacts import (
+    RUNTIME_SAE_FILES,
     UPSTREAM_SDXL_SAE_DIRS,
+    _allow_patterns,
     find_sae_block_dir,
     has_sae_weights,
     resolve_sae_weights_dir,
@@ -129,3 +131,19 @@ class TestArtifacts:
         )
         with pytest.raises(FileNotFoundError):
             resolve_sae_weights_dir(config)
+
+    def test_allow_patterns_download_only_runtime_files(self):
+        config = SAEConfig(blocks=["down.2.1"])
+
+        patterns = _allow_patterns(config)
+
+        assert len(patterns) == 3 * len(RUNTIME_SAE_FILES)
+        assert (
+            f"{UPSTREAM_SDXL_SAE_DIRS['down.2.1']}/state_dict.pth"
+            in patterns
+        )
+        assert all(not pattern.endswith("/*") for pattern in patterns)
+        assert all(
+            pattern.rsplit("/", 1)[-1] in RUNTIME_SAE_FILES
+            for pattern in patterns
+        )

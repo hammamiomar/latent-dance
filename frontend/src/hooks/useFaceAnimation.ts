@@ -14,6 +14,7 @@
 
 import { useRef, useCallback, type MutableRefObject } from "react";
 import { useAudioActivityStore } from "../stores/useAudioActivityStore";
+import { useAgentStore } from "../stores/useAgentStore";
 import { useBlockStore } from "../stores/useBlockStore";
 import { petBridge } from "../shared/petBridge";
 
@@ -630,6 +631,92 @@ function tickDisconnect(elapsed: number): FaceState {
   };
 }
 
+/** Agent override — local control feedback for recording, planning, and apply. */
+function tickAgent(): FaceState | null {
+  const { armed, latestEvent } = useAgentStore.getState();
+  const phase = latestEvent?.phase;
+  if (!phase || (!armed && phase !== "error")) return null;
+  const eventAgeMs = latestEvent?.timestamp ? Date.now() - Date.parse(latestEvent.timestamp) : 0;
+  if (phase === "error" && eventAgeMs > 3_500) return null;
+
+  const t = performance.now() / 1000;
+  const pulse = Math.sin(t * Math.PI * 3) * 0.5 + 0.5;
+
+  switch (phase) {
+    case "listening":
+      return {
+        leftEye: "wide",
+        rightEye: "wide",
+        lookX: Math.sin(t * 4) * 0.18,
+        lookY: -0.08,
+        pupilDilation: 0.75 + pulse * 0.18,
+        mouth: "open",
+        mouthOpenness: 0.35 + pulse * 0.25,
+        brightness: 1.0 + pulse * 0.08,
+        phase: "IDLE",
+      };
+
+    case "transcribing":
+      return {
+        leftEye: "half",
+        rightEye: "half",
+        lookX: 0,
+        lookY: 0.22,
+        pupilDilation: 0.55 + pulse * 0.1,
+        mouth: "contemplative",
+        mouthOpenness: 0,
+        brightness: 0.95 + pulse * 0.05,
+        phase: "IDLE",
+      };
+
+    case "thinking":
+    case "searching_features":
+    case "planning":
+    case "dj_deciding":
+      return {
+        leftEye: "normal",
+        rightEye: pulse > 0.85 ? "wide" : "normal",
+        lookX: Math.sin(t * 2.2) * 0.38,
+        lookY: Math.cos(t * 1.6) * 0.12,
+        pupilDilation: 0.55 + pulse * 0.2,
+        mouth: "contemplative",
+        mouthOpenness: 0,
+        brightness: 0.98 + pulse * 0.06,
+        phase: "IDLE",
+      };
+
+    case "applying":
+      return {
+        leftEye: "wide",
+        rightEye: "wide",
+        lookX: Math.sin(t * 9) * 0.28,
+        lookY: Math.cos(t * 7) * 0.1,
+        pupilDilation: 0.8 + pulse * 0.15,
+        mouth: "smile",
+        mouthOpenness: 0,
+        brightness: 1.05 + pulse * 0.08,
+        phase: "IDLE",
+      };
+
+    case "error":
+      return {
+        leftEye: "wide",
+        rightEye: "wide",
+        lookX: Math.sin(t * 18) * 0.35,
+        lookY: 0,
+        pupilDilation: 0.7,
+        mouth: "open",
+        mouthOpenness: 0.5,
+        brightness: 0.9,
+        phase: "DISCONNECT",
+        glitch: pulse > 0.6,
+      };
+
+    default:
+      return null;
+  }
+}
+
 // =============================================================================
 // PET INTERACTION — Progressive delight from rubbing between the eyes
 // =============================================================================
@@ -847,6 +934,9 @@ export function useFaceAnimation(): {
     const dt = Math.min(secs - r.lastSecs, 0.1); // clamp for safety
     r.lastSecs = secs;
     const elapsed = secs - r.phaseStart;
+
+    const agentState = tickAgent();
+    if (agentState) return agentState;
 
     // Pet interaction override — works in any phase
     const petState = tickPet(r, petRef.current, dt);

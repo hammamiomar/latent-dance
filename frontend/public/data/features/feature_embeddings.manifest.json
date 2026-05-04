@@ -1,0 +1,19 @@
+{
+  "blocks": [
+    "down.2.1",
+    "mid.0",
+    "up.0.0",
+    "up.0.1"
+  ],
+  "dimension": 384,
+  "dtype": "float16",
+  "format_version": 1,
+  "generated_at": "2026-05-03T19:55:07.820330+00:00",
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "source_hashes": {
+    "down.2.1": "f4d95c7cc4f72e2e74ddc427915bf94c6d8460ad230bc8783fcdec11541c36f9",
+    "mid.0": "ba68d60567ab69198bb1e4e44178865048220de9a4eea7ef008a37774115ebed",
+    "up.0.0": "e2778d1e24d8aa56537e8e7a22e11c11a1adc431c44b31a458411a050b85d846",
+    "up.0.1": "7bd9b9f890b22ce1f8adac4e34d6ee7d38597a7b91a0f7869b928eb16c156e4b"
+  }
+}

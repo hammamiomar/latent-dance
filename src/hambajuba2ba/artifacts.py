@@ -16,6 +16,8 @@ UPSTREAM_SDXL_SAE_DIRS: dict[str, str] = {
     "up.0.1": "unet.up_blocks.0.attentions.1_k10_hidden5120_auxk256_bs4096_lr0.0001",
 }
 
+RUNTIME_SAE_FILES: tuple[str, ...] = ("config.json", "state_dict.pth", "mean.pt")
+
 
 def has_sae_weights(weights_dir: str | Path, blocks: list[str] | tuple[str, ...]) -> bool:
     """Return True when every requested block has a usable SAE checkpoint."""
@@ -82,7 +84,7 @@ def resolve_sae_weights_dir(config: SAEConfig) -> Path:
 
 
 def _allow_patterns(config: SAEConfig) -> list[str]:
-    """Return narrow snapshot patterns for supported local/upstream layouts."""
+    """Return exact runtime snapshot files for supported checkpoint layouts."""
     prefix = config.artifact_weights_subdir.strip("/")
     patterns: list[str] = []
     for block in config.blocks:
@@ -92,7 +94,7 @@ def _allow_patterns(config: SAEConfig) -> list[str]:
 
         for candidate in candidates:
             path = f"{prefix}/{candidate}" if prefix else candidate
-            patterns.append(f"{path}/*")
+            patterns.extend(f"{path}/{filename}" for filename in RUNTIME_SAE_FILES)
     return patterns
 
 

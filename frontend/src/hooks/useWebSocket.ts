@@ -3,6 +3,12 @@ import { ConnectionStatus } from "../types";
 import { WS_CONFIG, PERF_CONFIG } from "../constants";
 import { usePerfStore } from "../stores/usePerfStore";
 import { blockActions } from "../stores/useBlockStore";
+import {
+  songIntelligenceActions,
+  type DecodedSongCurves,
+  type SongAnalysis,
+  type SongProfile,
+} from "../stores/useSongIntelligenceStore";
 import type {
   LinkTarget,
   TrackInfo,
@@ -55,6 +61,7 @@ interface UseWebSocketReturn {
     value: { seed?: number; prompt?: string },
     replaceMode?: 'direct' | 'from_blend'
   ) => void;
+  sendClearDestination: (space: DestinationSpace, slot: DestinationSlot) => void;
   sendFreezeBlend: (space: DestinationSpace, targetSlot: DestinationSlot) => void;
   sendSetBlendPosition: (space: DestinationSpace, position: number) => void;
   sendSetDestinationMode: (space: DestinationSpace, mode: DestinationMode) => void;
@@ -69,6 +76,97 @@ interface UseWebSocketReturn {
   fpsRef: React.RefObject<number>;
   isGenerating: boolean;
   reconnectAttempts: number;
+}
+
+export const BINARY_KIND_JPEG_FRAME = 0x01;
+export const BINARY_KIND_SONG_CURVES = 0x02;
+
+type DemuxedBinaryPayload =
+  | { kind: 'frame'; payload: ArrayBuffer }
+  | { kind: 'curves'; curves: DecodedSongCurves }
+  | { kind: 'unknown'; kindByte: number };
+
+function exactBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+function isJpegPayload(bytes: Uint8Array): boolean {
+  return bytes.byteLength >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8;
+}
+
+function requireBytes(offset: number, size: number, total: number) {
+  if (offset + size > total) {
+    throw new Error('Truncated song curve payload');
+  }
+}
+
+export function decodeSongCurvePayload(buffer: ArrayBuffer): DecodedSongCurves {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder();
+  const curves: DecodedSongCurves = { lock_index: {}, target_curves: {} };
+  let offset = 0;
+
+  requireBytes(offset, 4, bytes.byteLength);
+  const curveCount = view.getUint32(offset, true);
+  offset += 4;
+
+  for (let i = 0; i < curveCount; i += 1) {
+    requireBytes(offset, 4, bytes.byteLength);
+    const nameLength = view.getUint32(offset, true);
+    offset += 4;
+
+    requireBytes(offset, nameLength, bytes.byteLength);
+    const name = decoder.decode(bytes.slice(offset, offset + nameLength));
+    offset += nameLength;
+
+    requireBytes(offset, 4, bytes.byteLength);
+    const floatCount = view.getUint32(offset, true);
+    offset += 4;
+
+    const byteCount = floatCount * Float32Array.BYTES_PER_ELEMENT;
+    requireBytes(offset, byteCount, bytes.byteLength);
+    const values = new Float32Array(bytes.slice(offset, offset + byteCount).buffer);
+    offset += byteCount;
+
+    if (name === 'timestamps') {
+      curves.timestamps = values;
+    } else if (name === 'tension') {
+      curves.tension = values;
+    } else if (name === 'tonal_distance') {
+      curves.tonal_distance = values;
+    } else if (name === 'novelty_long') {
+      curves.novelty_long = values;
+    } else if (name.startsWith('lock_index:')) {
+      curves.lock_index[name.slice('lock_index:'.length)] = values;
+    } else if (name.startsWith('target:')) {
+      const [, target, channel] = name.split(':', 3);
+      if (target && channel) {
+        const linkTarget = target as LinkTarget;
+        curves.target_curves[linkTarget] = {
+          ...(curves.target_curves[linkTarget] ?? {}),
+          [channel]: values,
+        };
+      }
+    }
+  }
+
+  return curves;
+}
+
+export function demuxBinaryPayload(buffer: ArrayBuffer): DemuxedBinaryPayload {
+  const bytes = new Uint8Array(buffer);
+  const kindByte = bytes[0] ?? -1;
+  if (isJpegPayload(bytes)) {
+    return { kind: 'frame', payload: exactBuffer(bytes) };
+  }
+  if (kindByte === BINARY_KIND_JPEG_FRAME) {
+    return { kind: 'frame', payload: exactBuffer(bytes.slice(1)) };
+  }
+  if (kindByte === BINARY_KIND_SONG_CURVES) {
+    return { kind: 'curves', curves: decodeSongCurvePayload(exactBuffer(bytes.slice(1))) };
+  }
+  return { kind: 'unknown', kindByte };
 }
 
 export function useWebSocket({
@@ -121,19 +219,40 @@ export function useWebSocket({
     }
 
     setStatus(ConnectionStatus.CONNECTING);
-    ws.current = new WebSocket(url);
-    ws.current.binaryType = "arraybuffer";
+    const socket = new WebSocket(url);
+    socket.binaryType = "arraybuffer";
+    ws.current = socket;
 
-    ws.current.onopen = () => {
+    socket.onopen = () => {
+      if (ws.current !== socket) return;
       setStatus(ConnectionStatus.CONNECTED);
       reconnectAttemptsRef.current = 0;
       setReconnectAttempts(0);
     };
 
-    ws.current.onmessage = (event: MessageEvent) => {
+    socket.onmessage = (event: MessageEvent) => {
+      if (ws.current !== socket) return;
       // Binary frame
       if (event.data instanceof ArrayBuffer) {
-        onFrameRef.current?.(event.data);
+        let demuxed: DemuxedBinaryPayload;
+        try {
+          demuxed = demuxBinaryPayload(event.data);
+        } catch (error) {
+          console.warn("[useWebSocket] Failed to decode binary payload:", error);
+          return;
+        }
+
+        if (demuxed.kind === 'curves') {
+          songIntelligenceActions.setCurves(demuxed.curves);
+          return;
+        }
+
+        if (demuxed.kind === 'unknown') {
+          console.warn("[useWebSocket] Unknown binary payload kind:", demuxed.kindByte);
+          return;
+        }
+
+        onFrameRef.current?.(demuxed.payload);
 
         frameCountRef.current++;
         const now = Date.now();
@@ -196,6 +315,16 @@ export function useWebSocket({
               stems: msg.stems,
             });
             break;
+          case "song_intelligence":
+            if (typeof msg.audio_id === "string" && msg.profile) {
+              songIntelligenceActions.setProfile(
+                msg.audio_id,
+                msg.profile as SongProfile,
+                Array.isArray(msg.sections) ? msg.sections : [],
+                msg.analysis ? msg.analysis as SongAnalysis : null,
+              );
+            }
+            break;
           case "destination_status":
             onDestinationStatusRef.current?.({
               type: "destination_status",
@@ -212,11 +341,13 @@ export function useWebSocket({
       }
     };
 
-    ws.current.onerror = () => {
+    socket.onerror = () => {
+      if (ws.current !== socket) return;
       setStatus(ConnectionStatus.ERROR);
     };
 
-    ws.current.onclose = (event) => {
+    socket.onclose = (event) => {
+      if (ws.current !== socket) return;
       ws.current = null;
       setStatus(ConnectionStatus.DISCONNECTED);
       fpsRef.current = 0;
@@ -243,8 +374,13 @@ export function useWebSocket({
       reconnectTimeoutRef.current = null;
     }
     if (ws.current) {
-      ws.current.close(1000, "Client requested disconnect");
-      ws.current = null;
+      const socket = ws.current;
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      socket.close(1000, "Client requested disconnect");
+      if (ws.current === socket) ws.current = null;
       setStatus(ConnectionStatus.DISCONNECTED);
       fpsRef.current = 0;
       setIsGenerating(false);
@@ -262,6 +398,7 @@ export function useWebSocket({
 
   const sendStartSAESteering = useCallback(
     (audioId: string) => {
+      songIntelligenceActions.clear();
       send({ action: "start_sae_steering", audio_id: audioId });
       setIsGenerating(true);
     },
@@ -315,6 +452,13 @@ export function useWebSocket({
         prompt: value.prompt,
         replace_mode: replaceMode,
       });
+    },
+    [send],
+  );
+
+  const sendClearDestination = useCallback(
+    (space: DestinationSpace, slot: DestinationSlot) => {
+      send({ action: "clear_destination", space, slot });
     },
     [send],
   );
@@ -399,6 +543,7 @@ export function useWebSocket({
     sendAudioSeek,
     sendSetSteeringMode,
     sendSetDestination,
+    sendClearDestination,
     sendFreezeBlend,
     sendSetBlendPosition,
     sendSetDestinationMode,

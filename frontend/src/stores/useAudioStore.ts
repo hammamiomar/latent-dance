@@ -14,6 +14,7 @@ export type UploadPhase = 'idle' | 'uploading' | 'processing' | 'loading_stems' 
 interface AudioState {
   // Audio metadata
   audioId: string | null;
+  librarySongId: string | null;
   filename: string | null;
   stems: Stem[];
   duration: number;
@@ -35,7 +36,13 @@ interface AudioState {
   masterVolume: number;
 
   // Actions
-  setAudioData: (audioId: string, stems: Stem[], duration: number, filename?: string) => void;
+  setAudioData: (
+    audioId: string,
+    stems: Stem[],
+    duration: number,
+    filename?: string,
+    librarySongId?: string,
+  ) => void;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
 
@@ -76,6 +83,7 @@ const initialStemMuted: Record<PhysicalStem, boolean> = {
 
 const initialState = {
   audioId: null,
+  librarySongId: null,
   filename: null,
   stems: [] as Stem[],
   duration: 0,
@@ -94,9 +102,10 @@ const initialState = {
 export const useAudioStore = create<AudioState>((set) => ({
   ...initialState,
 
-  setAudioData: (audioId, stems, duration, filename) =>
+  setAudioData: (audioId, stems, duration, filename, librarySongId) =>
     set({
       audioId,
+      librarySongId: librarySongId ?? null,
       filename: filename ?? null,
       stems,
       duration,
@@ -115,6 +124,7 @@ export const useAudioStore = create<AudioState>((set) => ({
       uploadStatusLabel: 'Uploading...',
       uploadProgress: 0,
       uploadError: null,
+      librarySongId: null,
       filename,
     }),
 
@@ -171,6 +181,7 @@ export const useAudioStore = create<AudioState>((set) => ({
 // ============================================================================
 
 export const useAudioId = () => useAudioStore((s) => s.audioId);
+export const useAudioLibrarySongId = () => useAudioStore((s) => s.librarySongId);
 export const useAudioFilename = () => useAudioStore((s) => s.filename);
 export const useAudioDuration = () => useAudioStore((s) => s.duration);
 export const useAudioCurrentTime = () => useAudioStore((s) => s.currentTime);
@@ -211,8 +222,20 @@ export function getEffectiveStemVolume(
 // ============================================================================
 
 export const audioActions = {
-  setAudioData: (audioId: string, stems: Stem[], duration: number, filename?: string) =>
-    useAudioStore.getState().setAudioData(audioId, stems, duration, filename),
+  setAudioData: (
+    audioId: string,
+    stems: Stem[],
+    duration: number,
+    filename?: string,
+    librarySongId?: string,
+  ) =>
+    useAudioStore.getState().setAudioData(
+      audioId,
+      stems,
+      duration,
+      filename,
+      librarySongId,
+    ),
   setCurrentTime: (time: number) =>
     useAudioStore.getState().setCurrentTime(time),
   setIsPlaying: (playing: boolean) =>

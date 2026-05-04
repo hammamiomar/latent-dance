@@ -3,7 +3,7 @@
 All messages exchanged over WebSocket are validated against these Pydantic models.
 """
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -86,7 +86,7 @@ IntensitySourceType = Literal[
     "energy_smooth", "transient", "flux", "envelope",
 ]
 SilenceBehaviorType = Literal["drift_center", "hold_last"]
-IntensityCurveType = Literal["linear", "gamma", "impulse", "clip"]
+IntensityCurveType = Literal["linear", "gamma", "clip"]
 
 # Physics presets
 PhysicsPresetType = Literal[
@@ -121,7 +121,11 @@ LinkTargetType = Literal[
 
 
 class SetSteeringMode(BaseModel):
-    """Set steering mode (AUTO applies prominence weighting, MANUAL uses equal weights)."""
+    """Set steering mode.
+
+    AUTO derives block auto_config from song activity; MANUAL preserves explicit
+    block configs. Runtime prominence/rank scaling still applies in both modes.
+    """
 
     action: Literal["set_steering_mode"] = "set_steering_mode"
     mode: Literal["manual", "auto"]
@@ -241,6 +245,14 @@ class SetDestination(BaseModel):
     replace_mode: Literal["direct", "from_blend"] = "direct"
 
 
+class ClearDestination(BaseModel):
+    """Clear a destination slot in latent or prompt space."""
+
+    action: Literal["clear_destination"] = "clear_destination"
+    space: Literal["latent", "prompt"]
+    slot: Literal["a", "b"]
+
+
 class FreezeBlend(BaseModel):
     """Freeze current blend position into a specific slot.
 
@@ -314,6 +326,7 @@ ClientMessage = Annotated[
         SetCompositionConfig,
         # Destination modulation
         SetDestination,
+        ClearDestination,
         FreezeBlend,
         SetBlendPosition,
         SetDestinationMode,
@@ -344,6 +357,52 @@ class TrackInfo(BaseModel):
     duration: float  # Total duration in seconds
     bpm: float  # Detected tempo
     stems: list[str]  # Available stems (including virtual)
+
+
+class StemProfileMessage(BaseModel):
+    """Descriptive summary of one physical stem."""
+
+    name: str
+    role: str
+    texture: str
+    frequency_range: str
+    mean_energy: float
+    hpss_ratio: float
+    has_pitch: bool
+    has_tension: bool
+    onset_density: float
+
+
+class TensionArcPoint(BaseModel):
+    """Sparse tension-arc sample."""
+
+    time: float
+    tension: float
+    trend: Literal["rising", "falling", "stable"]
+
+
+class SongProfileMessage(BaseModel):
+    """Descriptive song profile. Contains no visual recommendations."""
+
+    bpm: float
+    estimated_key: Optional[str] = None
+    key_confidence: float
+    duration: float
+    stems: dict[str, StemProfileMessage]
+    coupling: dict[str, float]
+    sections: list[float]
+    tension_arc: list[TensionArcPoint]
+    overall_character: str
+
+
+class SongIntelligenceMessage(BaseModel):
+    """One-time song intelligence metadata sent before packed curve bytes."""
+
+    type: Literal["song_intelligence"] = "song_intelligence"
+    audio_id: str
+    profile: SongProfileMessage
+    sections: list[float]
+    analysis: dict[str, Any] | None = None
 
 
 class StemProminence(BaseModel):
@@ -416,5 +475,3 @@ class BlockConfigs(BaseModel):
 
     type: Literal["block_configs"] = "block_configs"
     configs: dict[str, BlockConfigSnapshot]
-
-

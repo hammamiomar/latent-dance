@@ -11,6 +11,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Win95Button } from '../ui/Win95Window';
 import { DestinationPanelWrapper } from './DestinationPanelWrapper';
+import { useCompositionStore } from '../../stores/useCompositionStore';
+import type { CompositionMode } from '../../types/composition';
 import type { DestinationSlot, Destination } from '../../types/destinations';
 import {
   SPACE_COLORS,
@@ -196,7 +198,7 @@ interface CompositionPanelProps {
   containerSize?: { width: number; height: number };
   onSetSeed: (slot: DestinationSlot, seed: number) => void;
   onClearDestination: (slot: DestinationSlot) => void;
-  onSetCompositionConfig: (config: { distance?: number; mode?: string }) => void;
+  onSetCompositionConfig: (config: { distance?: number; mode?: CompositionMode }) => void;
 }
 
 export function CompositionPanel({
@@ -211,18 +213,19 @@ export function CompositionPanel({
   onSetCompositionConfig,
 }: CompositionPanelProps) {
   const colors = SPACE_COLORS.latent;
-  const [distance, setDistance] = useState(1.0);
-  const [mode, setMode] = useState<'auto' | 'pulse' | 'continuous'>('auto');
+  const distance = useCompositionStore((state) => state.distance);
+  const mode = useCompositionStore((state) => state.mode);
+  const setCompositionConfig = useCompositionStore((state) => state.setConfig);
 
   const handleDistanceChange = useCallback((value: number) => {
-    setDistance(value);
+    setCompositionConfig({ distance: value });
     onSetCompositionConfig({ distance: value });
-  }, [onSetCompositionConfig]);
+  }, [onSetCompositionConfig, setCompositionConfig]);
 
-  const handleModeChange = useCallback((newMode: 'auto' | 'pulse' | 'continuous') => {
-    setMode(newMode);
+  const handleModeChange = useCallback((newMode: CompositionMode) => {
+    setCompositionConfig({ mode: newMode });
     onSetCompositionConfig({ mode: newMode });
-  }, [onSetCompositionConfig]);
+  }, [onSetCompositionConfig, setCompositionConfig]);
 
   return (
     <DestinationPanelWrapper

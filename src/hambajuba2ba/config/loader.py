@@ -63,6 +63,7 @@ def load_from_env(config: Optional[PipelineConfig] = None) -> PipelineConfig:
         "HAMBAJUBA_AUDIO_FEATURE_LEVEL": ("audio", "feature_level"),
         "HAMBAJUBA_AUDIO_COUPLING_STEMS": ("audio", "coupling_stems"),
         "HAMBAJUBA_AUDIO_FEATURE_CACHE": ("audio", "enable_feature_cache", lambda x: x.lower() == "true"),
+        "HAMBAJUBA_AUDIO_SONG_LIBRARY_DIR": ("audio", "song_library_dir"),
         # Streaming
         "HAMBAJUBA_STREAMING_FPS": ("streaming", "fps", float),
         "HAMBAJUBA_STREAMING_JPEG_QUALITY": ("streaming", "jpeg_quality", int),

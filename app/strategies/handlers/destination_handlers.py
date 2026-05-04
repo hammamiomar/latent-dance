@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.schemas import (
     SetDestination,
+    ClearDestination,
     FreezeBlend,
     SetBlendPosition,
     SetDestinationMode,
@@ -45,6 +46,9 @@ def handle_destination_message(
     """
     if isinstance(message, SetDestination):
         return _handle_set_destination(strategy, message)
+
+    if isinstance(message, ClearDestination):
+        return _handle_clear_destination(strategy, message)
 
     if isinstance(message, FreezeBlend):
         return _handle_freeze_blend(strategy, message)
@@ -97,8 +101,19 @@ def _handle_set_destination(
             )
             return None
 
-        if strategy._composition is None or strategy.pipeline.engine is None:
-            # Queue for replay after setup()
+        if strategy._composition is None:
+            if message.slot == "a":
+                strategy._noise_seed_a = message.seed
+            else:
+                strategy._noise_seed_b = message.seed
+            logger.info(
+                "Deferred SetDestination: latent/%s -> seed %s",
+                message.slot,
+                message.seed,
+            )
+            return None
+
+        if strategy.pipeline.engine is None:
             strategy._pending_destination_messages.append(message)
             logger.info(
                 f"Queued SetDestination(latent/{message.slot}) for after setup()"
@@ -142,7 +157,7 @@ def _handle_set_destination(
 
     if replace_mode == "from_blend":
         # Legacy behavior: freeze current blend as A, new dest as B
-        modulator.replace_destination(message.slot, destination)
+        modulator.replace_from_blend(destination)
     else:
         # Direct replacement: load into the specified slot, no blend freeze
         if message.slot == "a":
@@ -159,6 +174,60 @@ def _handle_set_destination(
     logger.info(
         f"SetDestination({replace_mode}): {message.space}/{message.slot} -> "
         f"{destination.label}, tensor={destination.tensor.shape}, pooled={pooled_shape}"
+    )
+    return None
+
+
+def _handle_clear_destination(
+    strategy: "SAESteeringStrategy",
+    message: ClearDestination,
+) -> None:
+    """Clear a destination slot in latent or prompt space."""
+    if message.space == "latent":
+        if strategy._composition is None:
+            if message.slot == "a":
+                if strategy._noise_seed_b is not None:
+                    strategy._noise_seed_a = strategy._noise_seed_b
+                    strategy._noise_seed_b = None
+                else:
+                    strategy._noise_seed_a = None
+            else:
+                strategy._noise_seed_b = None
+            logger.info(
+                "Deferred ClearDestination: latent/%s -> seed_a=%s, seed_b=%s",
+                message.slot,
+                strategy._noise_seed_a,
+                strategy._noise_seed_b,
+            )
+            return None
+
+        strategy._composition.clear_noise(message.slot)
+        strategy._noise_seed_a = strategy._composition.seed_a
+        strategy._noise_seed_b = strategy._composition.seed_b
+        logger.info(
+            "ClearDestination: latent/%s -> seed_a=%s, seed_b=%s",
+            message.slot,
+            strategy._noise_seed_a,
+            strategy._noise_seed_b,
+        )
+        return None
+
+    modulator = _get_modulator(strategy, message.space)
+
+    if modulator is None:
+        strategy._pending_destination_messages.append(message)
+        logger.info(
+            f"Queued ClearDestination({message.space}/{message.slot}) for after setup()"
+        )
+        return None
+
+    modulator.clear_destination(message.slot)
+    logger.info(
+        "ClearDestination: %s/%s -> A=%s, B=%s",
+        message.space,
+        message.slot,
+        modulator.destination_a.label if modulator.destination_a else None,
+        modulator.destination_b.label if modulator.destination_b else None,
     )
     return None
 
@@ -378,6 +447,7 @@ def is_destination_message(message: BaseModel) -> bool:
     """Check if message is a destination or composition message."""
     return isinstance(message, (
         SetDestination,
+        ClearDestination,
         FreezeBlend,
         SetBlendPosition,
         SetDestinationMode,

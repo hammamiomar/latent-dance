@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.caching import CacheManager
+from hambajuba2ba.audio.library import SongLibrary
 from app.routers import audio, streaming
 from hambajuba2ba.config import PipelineConfig
 from hambajuba2ba.generation.pipeline import SAESteerablePipeline
@@ -89,6 +90,7 @@ async def lifespan(app: FastAPI):
 
     # Audio cache for stem features
     audio_cache = CacheManager(default_ttl=config.audio.cache_ttl_seconds)
+    song_library = SongLibrary(config.audio.song_library_dir)
 
     # Store for dependency injection
     app.state.pipeline = pipeline
@@ -96,7 +98,9 @@ async def lifespan(app: FastAPI):
     app.state.gpu_lock = gpu_lock
     app.state.cpu_executor = cpu_executor
     app.state.audio_cache = audio_cache
+    app.state.song_library = song_library
 
+    logger.info(f"Song library: {song_library.root}")
     logger.info("Ready! SAE steering enabled.")
     yield
 

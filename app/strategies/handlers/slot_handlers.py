@@ -112,7 +112,7 @@ def _handle_update_block_config(
 
         if is_percussive:
             config.intensity_source = "transient"
-            config.intensity_curve = "linear"  # impulse not wired for SAE blocks
+            config.intensity_curve = "linear"
         else:
             config.intensity_source = "energy_smooth"
             config.intensity_curve = "linear"

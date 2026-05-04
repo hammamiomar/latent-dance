@@ -243,6 +243,29 @@ cd frontend
 bun dev
 ```
 
+## Hamba Brain / Hermes Agent
+
+latent-dance can also be driven by a Hermes agent. This is an optional control
+layer on top of the same instrument: Hermes reads the song analysis, searches
+the SAE feature labels, prepares an Auto Dance palette, and applies validated
+visual plans through the local MCP bridge.
+
+Install the Hamba tool server and optional semantic feature search:
+
+```bash
+uv tool install "hambajuba2ba[hermes,hermes-semantic] @ git+https://github.com/hammamiomar/latent-dance"
+```
+
+Install the matching Hermes skill:
+
+```bash
+hermes skills install hammamiomar/latent-dance/skills/creative/hambajuba-dance-director
+```
+
+The agent mode is documented separately so the main README stays focused on
+the visualizer itself. See [docs/hermes/README.md](docs/hermes/README.md) for
+the skill, MCP tools, local gateway setup, and Auto Dance behavior.
+
 ## Tests
 
 ```bash
@@ -256,9 +279,9 @@ bun run lint
 
 ## Public Release Status
 
-This repository is the cleaned public release tree. Private notes, personal GPU
-deployment workflows, research PDFs, and heavyweight SAE checkpoint files are
-intentionally excluded.
+This repository is the cleaned public release tree. Private notes,
+deployment-specific GPU workflows, research PDFs, and heavyweight SAE
+checkpoint files are intentionally excluded.
 
 Runtime artifacts are hosted on Hugging Face:
 

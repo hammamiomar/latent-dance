@@ -15,11 +15,11 @@ app/
 ├── websocket_manager.py      # WebSocket producer-consumer (RuthlessConsumer)
 ├── pipeline.py               # Pipeline lifecycle management
 ├── generation.py             # FrameItem transport type
-├── caching.py                # Audio feature cache (NPZ)
+├── caching.py                # Runtime TTL cache for active audio_id sessions
 ├── dependencies.py           # FastAPI dependency injection
 │
 ├── routers/
-│   ├── audio.py              # POST /audio/upload — Demucs separation + feature extraction
+│   ├── audio.py              # Upload, song library, activation, stem serving
 │   └── streaming.py          # WS /ws — WebSocket endpoint
 │
 └── strategies/
@@ -54,4 +54,6 @@ Frontend                    Backend
 
 - **RuthlessConsumer**: Drops old frames if frontend can't keep up. No buffering.
 - **Strategy pattern**: `SaeSteeringStrategy` owns the generation loop. Handlers dispatch messages by type.
+- **Persistent song library**: SQLite indexes cached song artifacts, but runtime
+  generation still uses an in-memory `audio_id` payload.
 - **No core logic here**: Physics, audio, SAE, composition all live in `src/hambajuba2ba/`. This is just routing and lifecycle.

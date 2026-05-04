@@ -26,9 +26,10 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import soundfile as sf
@@ -38,7 +39,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.caching import CacheManager
-from app.dependencies import get_audio_cache, get_config
+from app.dependencies import get_audio_cache, get_config, get_song_library
 from hambajuba2ba.config import PipelineConfig
 from hambajuba2ba.audio import (
     StemSeparator,
@@ -48,11 +49,19 @@ from hambajuba2ba.audio import (
 from hambajuba2ba.audio.beat_onset_detection import detect_beats
 from hambajuba2ba.audio.coupling import CrossStemFeatures
 from hambajuba2ba.audio.features import FEATURE_CACHE_VERSION, StemFeatures
+from hambajuba2ba.audio.library import SongLibrary, SongRecord
+from hambajuba2ba.audio.profile import (
+    build_song_analysis,
+    build_song_curves,
+    build_song_profile,
+    pack_song_curves_binary,
+)
 from hambajuba2ba.audio.separator import get_audio_duration
 
 logger = logging.getLogger("app.routers.audio")
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
+REQUIRED_PHYSICAL_STEMS = tuple(StemSeparator.STEM_NAMES)
 
 # Also keep a temp dir for session-specific files (cleaned on exit)
 AUDIO_TEMP_DIR = Path(tempfile.mkdtemp(prefix="hambajuba_audio_"))
@@ -68,7 +77,7 @@ def _cleanup_temp_storage():
 
 def _get_cache_root(config: PipelineConfig) -> Path:
     """Resolve and ensure the configured cache root."""
-    cache_root = Path(config.audio.stems_cache_dir)
+    cache_root = Path(config.audio.song_library_dir)
     cache_root.mkdir(parents=True, exist_ok=True)
     return cache_root
 
@@ -181,6 +190,26 @@ def _save_mix_to_cache(
     return str(mix_path)
 
 
+def _validate_physical_stems(stems: Dict[str, np.ndarray]) -> None:
+    """Ensure separation produced the physical stems required downstream."""
+    missing = [stem for stem in REQUIRED_PHYSICAL_STEMS if stem not in stems]
+    if missing:
+        raise ValueError(
+            "Stem separation incomplete; missing stems: " + ", ".join(missing)
+        )
+
+    for stem_name in REQUIRED_PHYSICAL_STEMS:
+        audio_data = stems[stem_name]
+        if not isinstance(audio_data, np.ndarray):
+            raise ValueError(f"Stem {stem_name} is not a numpy array")
+        if audio_data.ndim != 1:
+            raise ValueError(
+                f"Stem {stem_name} must be mono, got shape {audio_data.shape}"
+            )
+        if audio_data.size == 0:
+            raise ValueError(f"Stem {stem_name} is empty")
+
+
 # ============================================================================
 # Feature Cache Helpers
 # ============================================================================
@@ -271,6 +300,204 @@ def _save_feature_cache(
     meta_path.write_text(json.dumps(meta))
 
 
+def _song_metadata_from_filename(filename: str | None) -> dict[str, str]:
+    """Expose the user-visible file name without inventing extra tags."""
+    return {"filename": filename} if filename else {}
+
+
+def _build_audio_cache_payload(
+    *,
+    features: Dict[str, StemFeatures],
+    cross_stem_features: Optional[CrossStemFeatures],
+    duration: float,
+    bpm: float,
+    sample_rate: int,
+    stems: list[str],
+    stem_files: Dict[str, str],
+    mix_file: str,
+    filename: str | None,
+    metadata: dict[str, str] | None = None,
+) -> dict:
+    song_curves = build_song_curves(features, cross_stem_features)
+    song_profile = build_song_profile(
+        features,
+        cross_stem_features,
+        bpm=bpm,
+        duration=duration,
+        curves=song_curves,
+    )
+    song_analysis = build_song_analysis(
+        features,
+        cross_stem_features,
+        bpm=bpm,
+        duration=duration,
+        curves=song_curves,
+        metadata=metadata,
+    )
+    song_curves_binary = pack_song_curves_binary(song_curves)
+
+    cache_payload = {
+        "features": features,
+        "cross_stem_features": cross_stem_features,
+        "duration": duration,
+        "bpm": bpm,
+        "sr": sample_rate,
+        "stems": stems,
+        "stem_files": stem_files,
+        "mix_file": mix_file,
+        "song_profile": song_profile.to_dict(),
+        "song_analysis": song_analysis,
+        "song_sections": song_profile.sections,
+        "song_curves_binary": song_curves_binary,
+    }
+    if filename is not None:
+        cache_payload["filename"] = filename
+    return cache_payload
+
+
+def _song_intelligence_response_fields(payload: dict) -> dict[str, Any]:
+    return {
+        "song_profile": payload.get("song_profile"),
+        "song_analysis": payload.get("song_analysis"),
+        "song_sections": payload.get("song_sections", []),
+    }
+
+
+def _feature_cache_status(
+    content_hash: str,
+    cache_root: Path,
+    config: PipelineConfig,
+) -> tuple[str, str | None]:
+    cache_dir = _feature_cache_dir(content_hash, cache_root)
+    meta_path = cache_dir / "features_meta.json"
+    if not meta_path.exists():
+        return "unavailable", "missing feature metadata"
+
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception:
+        return "unavailable", "invalid feature metadata"
+
+    expected = {
+        "version": FEATURE_CACHE_VERSION,
+        "feature_level": config.audio.feature_level,
+        "coupling_stems": config.audio.coupling_stems,
+        "sample_rate": config.audio.sample_rate,
+    }
+    for key, value in expected.items():
+        if meta.get(key) != value:
+            return "unavailable", f"feature cache {key} mismatch"
+
+    stems = meta.get("stems", [])
+    if not stems:
+        return "unavailable", "feature cache has no stems"
+
+    missing = [stem for stem in stems if not (cache_dir / f"{stem}.npz").exists()]
+    if missing:
+        return "unavailable", "missing feature files: " + ", ".join(missing[:4])
+
+    return "ready", None
+
+
+def _song_library_status(
+    record: SongRecord,
+    song_library: SongLibrary,
+    config: PipelineConfig,
+) -> tuple[str, str | None]:
+    cached = _get_cached_stems(record.content_hash, song_library.root)
+    if cached is None:
+        return "unavailable", "missing cached stems or mix"
+    return _feature_cache_status(record.content_hash, song_library.root, config)
+
+
+def _song_library_item(
+    record: SongRecord,
+    song_library: SongLibrary,
+    config: PipelineConfig,
+) -> dict:
+    status, reason = _song_library_status(record, song_library, config)
+    return {
+        "song_id": record.song_id,
+        "content_hash": record.content_hash,
+        "filename": record.filename,
+        "source_type": record.source_type,
+        "source_uri": record.source_uri,
+        "duration": record.duration,
+        "bpm": record.bpm,
+        "stems": list(record.stems),
+        "feature_version": record.feature_version,
+        "feature_level": record.feature_level,
+        "coupling_stems": record.coupling_stems,
+        "sample_rate": record.sample_rate,
+        "status": status,
+        "unavailable_reason": reason,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def _activate_library_song(
+    *,
+    record: SongRecord,
+    song_library: SongLibrary,
+    config: PipelineConfig,
+    audio_cache: CacheManager,
+) -> "SongActivationResponse":
+    status, reason = _song_library_status(record, song_library, config)
+    if status != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Song cache is not ready: {reason or 'unavailable'}",
+        )
+
+    cached = _get_cached_stems(record.content_hash, song_library.root)
+    if cached is None:
+        raise HTTPException(status_code=409, detail="Cached stems are unavailable")
+    stem_files, mix_file = cached
+
+    feature_cache = _load_feature_cache(
+        record.content_hash,
+        song_library.root,
+        config.audio.feature_level,
+        config.audio.coupling_stems,
+        config.audio.sample_rate,
+    )
+    if feature_cache is None:
+        raise HTTPException(status_code=409, detail="Cached features are unavailable")
+
+    features, cross_stem_features, bpm = feature_cache
+    stems = list(features.keys())
+    duration = record.duration
+    if stems:
+        duration = features[stems[0]].duration
+
+    audio_id = str(uuid.uuid4())
+    cache_payload = _build_audio_cache_payload(
+        features=features,
+        cross_stem_features=cross_stem_features,
+        duration=duration,
+        bpm=bpm,
+        sample_rate=config.audio.sample_rate,
+        stems=stems,
+        stem_files=stem_files,
+        mix_file=mix_file,
+        filename=record.filename,
+        metadata=_song_metadata_from_filename(record.filename),
+    )
+    audio_cache.set(audio_id, cache_payload, ttl=config.audio.cache_ttl_seconds)
+
+    return SongActivationResponse(
+        audio_id=audio_id,
+        song_id=record.song_id,
+        content_hash=record.content_hash,
+        filename=record.filename,
+        stems=stems,
+        duration=duration,
+        bpm=bpm,
+        **_song_intelligence_response_fields(cache_payload),
+    )
+
+
 
 class AudioUploadResponse(BaseModel):
     """Response from audio upload."""
@@ -279,6 +506,9 @@ class AudioUploadResponse(BaseModel):
     stems: List[str]
     duration: float
     bpm: float = 120.0  # Detected tempo
+    song_profile: dict[str, Any] | None = None
+    song_analysis: dict[str, Any] | None = None
+    song_sections: List[float] = []
 
 
 class AudioStatusResponse(BaseModel):
@@ -290,23 +520,105 @@ class AudioStatusResponse(BaseModel):
     stems: List[str] = []
     duration: float = 0.0
     bpm: float = 0.0
+    song_profile: dict[str, Any] | None = None
+    song_analysis: dict[str, Any] | None = None
+    song_sections: List[float] = []
 
 
-# Track upload/processing status (thread-safe)
-_processing_status: Dict[str, dict] = {}
+class SongLibraryItem(BaseModel):
+    """Persistent cached song metadata for the DATA panel."""
+
+    song_id: str
+    content_hash: str
+    filename: str | None = None
+    source_type: str
+    source_uri: str | None = None
+    duration: float
+    bpm: float
+    stems: List[str]
+    feature_version: int
+    feature_level: str
+    coupling_stems: str
+    sample_rate: int
+    status: str
+    unavailable_reason: str | None = None
+    created_at: float
+    updated_at: float
+
+
+class SongLibraryResponse(BaseModel):
+    """List of songs known to the persistent library."""
+
+    songs: List[SongLibraryItem]
+
+
+class SongActivationResponse(BaseModel):
+    """Fresh runtime audio session created from a persistent song."""
+
+    audio_id: str
+    song_id: str
+    content_hash: str
+    filename: str | None = None
+    stems: List[str]
+    duration: float
+    bpm: float
+    song_profile: dict[str, Any] | None = None
+    song_analysis: dict[str, Any] | None = None
+    song_sections: List[float] = []
+
+
+# Track upload/processing status (thread-safe, bounded TTL)
+_PROCESSING_STATUS_TTL_SECONDS = 15 * 60
+_PROCESSING_STATUS_MAX_ENTRIES = 256
+_processing_status: Dict[str, tuple[dict, float]] = {}
 _status_lock = asyncio.Lock()
+
+
+def _cleanup_status_locked(now: float) -> None:
+    """Drop expired and oldest processing statuses while lock is held."""
+    expired = [
+        audio_id
+        for audio_id, (_, expires_at) in _processing_status.items()
+        if expires_at <= now
+    ]
+    for audio_id in expired:
+        _processing_status.pop(audio_id, None)
+
+    overflow = len(_processing_status) - _PROCESSING_STATUS_MAX_ENTRIES
+    if overflow <= 0:
+        return
+
+    oldest = sorted(
+        _processing_status,
+        key=lambda audio_id: _processing_status[audio_id][1],
+    )
+    for audio_id in oldest[:overflow]:
+        _processing_status.pop(audio_id, None)
 
 
 async def _set_status(audio_id: str, status: dict) -> None:
     """Thread-safe status update."""
     async with _status_lock:
-        _processing_status[audio_id] = status
+        now = time.time()
+        _cleanup_status_locked(now)
+        _processing_status[audio_id] = (
+            status,
+            now + _PROCESSING_STATUS_TTL_SECONDS,
+        )
+        _cleanup_status_locked(now)
 
 
 async def _get_status(audio_id: str) -> dict | None:
     """Thread-safe status read."""
     async with _status_lock:
-        return _processing_status.get(audio_id)
+        entry = _processing_status.get(audio_id)
+        if entry is None:
+            return None
+        status, expires_at = entry
+        if expires_at <= time.time():
+            _processing_status.pop(audio_id, None)
+            return None
+        return status
 
 
 async def _delete_status(audio_id: str) -> None:
@@ -322,8 +634,11 @@ async def _process_audio_pipeline(
     content_hash: str,
     config: PipelineConfig,
     audio_cache: CacheManager,
+    song_library: SongLibrary,
     cache_root: Path,
     filename: str | None = None,
+    source_type: str = "upload",
+    source_uri: str | None = None,
 ) -> AudioUploadResponse:
     """Shared processing pipeline for audio files (upload + YouTube).
 
@@ -344,6 +659,7 @@ async def _process_audio_pipeline(
             for stem_name, stem_path in stem_files.items():
                 audio_data, _ = librosa.load(stem_path, sr=config.audio.sample_rate, mono=True)
                 stems[stem_name] = audio_data.astype(np.float32)
+            _validate_physical_stems(stems)
 
             duration = get_audio_duration(mix_file)
         else:
@@ -361,6 +677,7 @@ async def _process_audio_pipeline(
                 output_dir=config.audio.stems_cache_dir,
             )
             stems = await separator.separate(tmp_path, sample_rate=config.audio.sample_rate)
+            _validate_physical_stems(stems)
             logger.info(f"Audio {audio_id}: Separation complete, stems={list(stems.keys())}")
 
             await _set_status(audio_id, {"status": "caching", "progress": 0.6})
@@ -444,25 +761,34 @@ async def _process_audio_pipeline(
                 )
                 logger.info(f"Audio {audio_id}: Saved features to disk cache")
 
-        # Cache for streaming session (includes file paths for serving)
-        cache_payload = {
-            "features": features,
-            "cross_stem_features": cross_stem_features,
-            "duration": duration,
-            "bpm": bpm,
-            "sr": config.audio.sample_rate,
-            "stems": all_stem_names,
-            "stem_files": stem_files,
-            "mix_file": mix_file,
-        }
-        if filename is not None:
-            cache_payload["filename"] = filename
-
-        audio_cache.set(
-            audio_id,
-            cache_payload,
-            ttl=config.audio.cache_ttl_seconds,
+        song_library.upsert_song(
+            content_hash=content_hash,
+            filename=filename,
+            source_type=source_type,
+            source_uri=source_uri,
+            duration=duration,
+            bpm=bpm,
+            stems=all_stem_names,
+            feature_version=FEATURE_CACHE_VERSION,
+            feature_level=config.audio.feature_level,
+            coupling_stems=config.audio.coupling_stems,
+            sample_rate=config.audio.sample_rate,
+            mix_path=mix_file,
         )
+
+        cache_payload = _build_audio_cache_payload(
+            features=features,
+            cross_stem_features=cross_stem_features,
+            duration=duration,
+            bpm=bpm,
+            sample_rate=config.audio.sample_rate,
+            stems=all_stem_names,
+            stem_files=stem_files,
+            mix_file=mix_file,
+            filename=filename,
+            metadata=_song_metadata_from_filename(filename),
+        )
+        audio_cache.set(audio_id, cache_payload, ttl=config.audio.cache_ttl_seconds)
         logger.info(f"Audio {audio_id}: Cached with TTL=3600s")
 
         await _set_status(
@@ -473,6 +799,7 @@ async def _process_audio_pipeline(
                 "stems": all_stem_names,
                 "duration": duration,
                 "bpm": bpm,
+                **_song_intelligence_response_fields(cache_payload),
             },
         )
         logger.info(f"Audio {audio_id}: ✓ Complete! duration={duration:.2f}s, bpm={bpm:.1f}, stems={all_stem_names}")
@@ -486,6 +813,7 @@ async def _process_audio_pipeline(
             stems=all_stem_names,
             duration=duration,
             bpm=bpm,
+            **_song_intelligence_response_fields(cache_payload),
         )
 
     except HTTPException:
@@ -493,7 +821,7 @@ async def _process_audio_pipeline(
         await _set_status(audio_id, {"status": "error", "progress": 0.0, "error": "validation_failed"})
         raise
 
-    except (ValueError, OSError) as e:
+    except (ValueError, OSError, RuntimeError) as e:
         # Known error types from audio processing
         await _set_status(audio_id, {"status": "error", "progress": 0.0, "error": str(e)})
         logger.error(f"Audio {audio_id}: Processing error - {e}")
@@ -518,6 +846,7 @@ async def _process_audio_pipeline(
 async def upload_and_separate(
     file: UploadFile,
     audio_cache: CacheManager = Depends(get_audio_cache),
+    song_library: SongLibrary = Depends(get_song_library),
     config: PipelineConfig = Depends(get_config),
     async_mode: bool = Query(False, alias="async"),
 ) -> AudioUploadResponse:
@@ -596,7 +925,9 @@ async def upload_and_separate(
                     content_hash=content_hash,
                     config=config,
                     audio_cache=audio_cache,
+                    song_library=song_library,
                     cache_root=cache_root,
+                    filename=file.filename,
                 )
             except Exception:
                 logger.exception(f"Audio {audio_id}: Async processing failed")
@@ -615,7 +946,9 @@ async def upload_and_separate(
         content_hash=content_hash,
         config=config,
         audio_cache=audio_cache,
+        song_library=song_library,
         cache_root=cache_root,
+        filename=file.filename,
     )
 
 
@@ -642,6 +975,9 @@ async def get_audio_status(
             stems=status.get("stems", []),
             duration=status.get("duration", 0.0),
             bpm=status.get("bpm", 0.0),
+            song_profile=status.get("song_profile"),
+            song_analysis=status.get("song_analysis"),
+            song_sections=status.get("song_sections", []),
         )
 
     # Check cache
@@ -654,9 +990,45 @@ async def get_audio_status(
             stems=cached.get("stems", []),
             duration=cached.get("duration", 0.0),
             bpm=cached.get("bpm", 120.0),
+            **_song_intelligence_response_fields(cached),
         )
 
     raise HTTPException(status_code=404, detail="Audio not found")
+
+
+@router.get("/library", response_model=SongLibraryResponse)
+async def list_song_library(
+    song_library: SongLibrary = Depends(get_song_library),
+    config: PipelineConfig = Depends(get_config),
+) -> SongLibraryResponse:
+    """List persistent songs available for fast activation."""
+    return SongLibraryResponse(
+        songs=[
+            SongLibraryItem.model_validate(
+                _song_library_item(record, song_library, config)
+            )
+            for record in song_library.list_songs()
+        ]
+    )
+
+
+@router.post("/library/{song_id}/activate", response_model=SongActivationResponse)
+async def activate_library_song(
+    song_id: str,
+    audio_cache: CacheManager = Depends(get_audio_cache),
+    song_library: SongLibrary = Depends(get_song_library),
+    config: PipelineConfig = Depends(get_config),
+) -> SongActivationResponse:
+    """Create a fresh runtime audio_id from a persistent song cache entry."""
+    record = song_library.get_song(song_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Song not found")
+    return _activate_library_song(
+        record=record,
+        song_library=song_library,
+        config=config,
+        audio_cache=audio_cache,
+    )
 
 
 @router.delete("/{audio_id}")
@@ -700,6 +1072,7 @@ class YouTubeDownloadResponse(BaseModel):
 async def download_from_youtube(
     request: YouTubeDownloadRequest,
     audio_cache: CacheManager = Depends(get_audio_cache),
+    song_library: SongLibrary = Depends(get_song_library),
     config: PipelineConfig = Depends(get_config),
     async_mode: bool = Query(False, alias="async"),
 ) -> YouTubeDownloadResponse:
@@ -759,8 +1132,11 @@ async def download_from_youtube(
                 content_hash=content_hash,
                 config=config,
                 audio_cache=audio_cache,
+                song_library=song_library,
                 cache_root=cache_root,
                 filename=filename,
+                source_type="youtube",
+                source_uri=request.url,
             )
 
             return YouTubeDownloadResponse(

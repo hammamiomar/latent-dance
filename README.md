@@ -15,6 +15,8 @@
   ·
   <a href="https://huggingface.co/datasets/hammamiomar/sdxl-turbo-sae-labels">Hugging Face labels</a>
   ·
+  <a href="docs/hermes/README.md">Hermes MCP / Hamba Brain</a>
+  ·
   <a href="docs/LABELING_PIPELINE.md">Labeling pipeline</a>
 </p>
 
@@ -23,6 +25,12 @@
     <img src="docs/assets/readme/hambajuba-hero.png" alt="latent-dance interface with flower orbs connected to a crystal heart" width="900" />
   </a>
 </p>
+
+> **New:** latent-dance can now be operated by **Hamba Brain**, a Hermes agent
+> connected through local MCP tools. Hermes can read song analysis, search
+> 20,480 SAE feature labels, prepare Auto Dance palettes, and apply validated
+> visual plans while the music is running. See
+> [docs/hermes/README.md](docs/hermes/README.md).
 
 latent-dance is a music visualizer where the music does not drive bars,
 waveforms, or shaders directly. It drives concepts inside SDXL-Turbo.

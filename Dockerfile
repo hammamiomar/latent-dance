@@ -57,4 +57,8 @@ EXPOSE 8000
 
 COPY scripts/dev/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
+LABEL org.opencontainers.image.title="latent-dance" \
+      org.opencontainers.image.description="Real-time, audio-reactive SDXL-Turbo visualizer with SAE steering" \
+      org.opencontainers.image.source="https://github.com/hammamiomar/latent-dance" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"
 ENTRYPOINT ["/docker-entrypoint.sh"]

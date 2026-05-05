@@ -136,6 +136,15 @@ function compactWindowStats(stats: ReturnType<typeof sampleWindowStats>) {
   };
 }
 
+type CompactWindowStats = ReturnType<typeof compactWindowStats>;
+type TargetWindowChannel = (typeof TARGET_WINDOW_CHANNELS)[number];
+type TargetWindowSnapshot = {
+  windows?: Partial<Record<TargetWindowChannel, {
+    recent?: CompactWindowStats;
+    upcoming?: CompactWindowStats;
+  }>>;
+};
+
 function buildTargetWindows(
   currentTime: number,
   lookback: number,
@@ -206,9 +215,9 @@ function buildTargetWindows(
 }
 
 function buildRankedWindowTargets(
-  targetWindows: Record<string, any>,
+  targetWindows: Record<string, TargetWindowSnapshot>,
 ) {
-  const rankChannel = (channel: string) => Object.entries(targetWindows)
+  const rankChannel = (channel: TargetWindowChannel) => Object.entries(targetWindows)
     .map(([target, window]) => {
       const stats = window?.windows?.[channel];
       if (!stats) return null;

@@ -17,7 +17,22 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libturbojpeg ffmpeg
       - run: uv sync --frozen
       - run: uv run --frozen ruff check
-      - run: uv run --frozen pytest -q
+      - name: Run public CPU-safe tests
+        run: >
+          uv run --frozen pytest -q
+          tests/test_backend_wiring.py
+          tests/test_caching.py
+          tests/test_hermes_contracts.py
+          tests/test_hermes_integration.py
+          tests/test_song_library.py
+          tests/test_song_profile.py
+          tests/test_audio_status.py
+          tests/unit/test_config.py
+          tests/unit/test_destinations.py
+          tests/unit/test_intensity_curves.py
+          tests/unit/test_audio_separator.py
+          tests/unit/test_sae_steering.py
+          tests/unit/test_sae_autoencoder.py
 
   frontend:
     runs-on: ubuntu-latest

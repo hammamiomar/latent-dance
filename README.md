@@ -41,8 +41,9 @@ blocks. The result is an instrument for performing inside a generative model:
 drums can push intensity, bass can steer warmth, vocals can move detail through
 the frame, and scene transitions can follow harmonic tension.
 
-The current demo target is a single CUDA GPU. The original performance target
-was about 50 FPS at 512x512 on an RTX 5090 using a compiled SDXL-Turbo path.
+The current demo target is a single high-end CUDA GPU. The public Linux stack
+uses PyTorch CUDA 12.8 wheels and has been tested on Blackwell, with an RTX
+5090 target of about 50 FPS at 512x512 using a compiled SDXL-Turbo path.
 
 ## What Makes It Different
 
@@ -217,13 +218,33 @@ and attribution boundary.
 
 ## Quick Start
 
+### Docker On NVIDIA
+
+The public container is the simplest path for running the API on a Linux host
+with an NVIDIA GPU and NVIDIA Container Toolkit:
+
+```bash
+docker run --gpus all -p 8000:8000 \
+  -v latent-dance-cache:/workspace \
+  ghcr.io/hammamiomar/latent-dance:latest
+```
+
+The image downloads model, audio, and SAE artifacts into `/workspace/.cache` on
+first boot. The dependency lock selects PyTorch CUDA 12.8 on Linux; this is the
+Blackwell-tested path, but not intended to be Blackwell-only. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for local builds, runtime modes, and
+publishing notes.
+
+### Source Setup
+
 Prerequisites:
 
 - Python 3.11+
 - `uv`
 - Bun 1.3.5+
 - Node 20.19+
-- CUDA GPU for real-time generation
+- CUDA GPU for real-time generation; the public GPU path is tested on Blackwell
+  / RTX 5090 with PyTorch CUDA 12.8
 
 ```bash
 uv sync --extra audio-gpu
@@ -310,7 +331,8 @@ Runtime artifacts are hosted on Hugging Face:
 
 ## Limitations
 
-- The demo target is currently a high-end CUDA GPU.
+- The demo target is currently a high-end CUDA GPU. The tested public GPU path
+  is Blackwell / RTX 5090 with PyTorch CUDA 12.8.
 - Output is currently optimized around 512x512 SDXL-Turbo.
 - Feature labels are useful steering handles, not ground truth ontology.
 - Some low-confidence labels remain, especially in subtle texture/style regions.

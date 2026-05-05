@@ -2,6 +2,16 @@
 
 ## Public Docker Image
 
+The public GPU runtime is published to GitHub Container Registry:
+
+```bash
+ghcr.io/hammamiomar/latent-dance:latest
+```
+
+It is built by `.github/workflows/docker-build-push.yml` on manual dispatch or
+tagged releases. If the package has not been published yet, build the same image
+locally with the command below.
+
 Build locally:
 
 ```bash
@@ -14,7 +24,15 @@ Run:
 docker run --gpus all -p 8000:8000 -v latent-dance-cache:/workspace ghcr.io/hammamiomar/latent-dance:latest
 ```
 
-The image defaults to `MODE=api` and exposes only HTTP port `8000`. It does not start a remote shell service. Models and SAE artifacts download into `/workspace/.cache`.
+The host needs an NVIDIA GPU, recent NVIDIA drivers, Docker, and NVIDIA
+Container Toolkit. The Linux dependency lock selects PyTorch CUDA 12.8 wheels,
+which are the Blackwell-tested path used for the public demo target. The image
+is not intentionally Blackwell-only, but real-time performance is only claimed
+for the tested high-end CUDA setup.
+
+The image defaults to `MODE=api` and exposes only HTTP port `8000`. It does not
+start a remote shell service. Models and SAE artifacts download into
+`/workspace/.cache`.
 
 ## First Boot Downloads
 

@@ -64,29 +64,17 @@ The snapshot includes:
 - `sampled_at_audio_time`: the audio element time used for curve sampling.
 - `sampled_at_wall_time_ms`: the wall-clock time when the frontend sampled it.
 
-When a visual plan is based on that window, include plan-level freshness
-metadata:
-
-- `based_on_audio_time`: copy from `sampled_at_audio_time`.
-- `based_on_wall_time_ms`: copy from `sampled_at_wall_time_ms`.
-- `max_staleness_sec`: the maximum acceptable audio-time drift before the
-  frontend should reject the plan or require a refresh.
-
-Default staleness guidance:
-
-| Mode | `max_staleness_sec` | Use |
-|------|---------------------|-----|
-| directive | `20` | Durable user-directed aesthetic changes |
-| DJ calm | `12` | Sparse section-level moves |
-| DJ balanced | `8` | Moderate responsiveness |
-| DJ active | `4` | Faster automated decisions |
-| section-timed move | `2` | Only for an explicitly near transition |
+Use sampled times as context, not as a beat-perfect contract. Normal Hamba
+plans are durable steering changes, so do not include `based_on_audio_time`,
+`based_on_wall_time_ms`, or `max_staleness_sec` in `hamba_apply_visual_plan`.
+The MCP server ignores those legacy timing fields when they are received.
 
 Music windows are for choosing mappings, not triggering individual frames.
 Prefer persistent audio-reactive mappings such as stems, link targets, ranks,
 feature IDs, prompt journeys, response curves, and composition behavior over
 frame-precise "do this now" actions. If the track has moved too far from the
-sampled window, call `hamba_get_music_window` again and re-plan.
+sampled window, call `hamba_get_music_window` again and choose durable mappings
+for the current playback context.
 
 Idle staging is allowed. When `hamba_get_state` reports `active_session=false`
 but `armed=true` and `has_control_state=true`, Hermes may still stage prompts,
@@ -117,8 +105,9 @@ Hermes should use that context before deciding whether to wait, ask for visual
 direction, stage a first setup, or read a live music window. If the user arms
 before upload, the frontend emits a newer `agent_entry_context` event as upload,
 analysis, stem loading, or song readiness changes. Hermes should always prefer
-the newest context. The entry context intentionally omits filename, artist,
-title, and genre.
+the newest context. The entry context is a state snapshot, not a song-metadata
+source. If filename context matters, call `hamba_get_song_analysis`; it may
+include upload or library filename metadata when available.
 
 Default blank state:
 
@@ -145,10 +134,12 @@ stem activity until a song profile or music window is available.
 
 ## Whole-Song Analysis
 
-`hamba_get_song_analysis` is the entry-planning read. It returns anonymous DSP
-evidence for each available link target, not creative prescriptions. It omits
-filename, artist, title, and genre on purpose, so Hermes has to reason from the
-signal and the user's directive.
+`hamba_get_song_analysis` is the entry-planning read. It returns DSP evidence
+for each available link target, not creative prescriptions. The response may
+include `metadata.filename` and `metadata_policy` when an upload or library
+filename is available. Use filename as lightweight taste/reference context only:
+do not infer artist, title, or genre beyond what the filename literally says,
+and keep control decisions grounded in DSP plus the user's directive.
 
 The response includes:
 
@@ -236,13 +227,13 @@ If the user asks to change the whole image, Hermes should rewrite prompts
 first, then decide whether any SAE layer should be changed. Feature search is
 evidence for specific layers, not the default answer to every directive.
 
-## Divergence And Soul
+## Divergence And Creative Style
 
 The desktop bridge adds two creative instructions to each Brain directive:
 
-- `soul`: repo-bundled Hamba taste/personality from the desktop source tree.
-  The Brain path intentionally does not read `~/.hermes/SOUL.md` or soul env
-  overrides.
+- creative style: public, repo-bundled Hamba taste/personality instructions
+  from the desktop source tree. The Brain path uses the instructions shipped
+  with the repository; it does not read local user files or style env overrides.
 - `divergence`: `0..1` creative distance across prompts, latent/noise motion,
   and SAE channels. Default is `0.85`. This is not the LLM API sampling
   temperature.
@@ -333,7 +324,7 @@ path. The loop should:
 1. Check armed/mode/playback state.
 2. Poll `hamba_get_music_window` at a coarse interval.
 3. Make at most one sparse, durable section-level change per interval.
-4. Include timing/staleness metadata in plans.
+4. Avoid timing/staleness metadata in normal plans; apply durable mappings.
 5. Stop when disarmed, playback stops, or mode changes away from DJ.
 
 ## SAE Blocks

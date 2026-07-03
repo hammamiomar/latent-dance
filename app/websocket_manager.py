@@ -170,7 +170,7 @@ class WebSocketManager:
     - Lifecycle management (setup, cleanup, stop)
 
     Usage:
-        strategy = LoopingStrategy(pipeline, config, websocket)
+        strategy = create_strategy(mode, pipeline, config, websocket, cache, ...)
         manager = WebSocketManager(strategy, websocket, config)
         await manager.run()
     """
@@ -184,7 +184,7 @@ class WebSocketManager:
         """Initialize WebSocket manager.
 
         Args:
-            strategy: Generation strategy (looping, audio, four-corner)
+            strategy: Generation strategy from create_strategy()
             websocket: WebSocket connection
             config: Pipeline configuration
         """
@@ -269,12 +269,11 @@ class WebSocketManager:
                 if now - self._last_perf_emit >= 1.0 and len(self.batch_times) >= 5:
                     avg = sum(self.batch_times) / len(self.batch_times)
                     gen_fps = 1.0 / max(1e-9, avg)
-                    snapshot = {}
-                    if hasattr(self.strategy, "_frames") and self.strategy._frames is not None:
-                        try:
-                            snapshot = self.strategy._frames.get_perf_snapshot()
-                        except Exception:
-                            snapshot = {}
+                    # Strategy perf state (includes measured_fps + lookahead_ms)
+                    try:
+                        snapshot = self.strategy.get_perf_snapshot()
+                    except Exception:
+                        snapshot = {}
                     # Merge delivery SLO metrics from consumer
                     delivery_stats = {}
                     if self.consumer is not None:
@@ -283,20 +282,10 @@ class WebSocketManager:
                         except Exception:
                             pass
 
-                    # Get measured FPS and lookahead from strategy
-                    measured_fps = 0.0
-                    lookahead_ms = 0.0
-                    if hasattr(self.strategy, "_frames") and self.strategy._frames is not None:
-                        measured_fps = self.strategy._frames.measured_fps
-                    if hasattr(self.strategy, "_lookahead_s"):
-                        lookahead_ms = self.strategy._lookahead_s * 1000
-
                     perf_payload = {
                         "type": "perf_stats",
                         "gen_fps": gen_fps,
                         "queue_depth": self.frames_q.qsize(),
-                        "measured_fps": measured_fps,
-                        "lookahead_ms": lookahead_ms,
                         **snapshot,
                         **delivery_stats,
                     }
@@ -308,10 +297,7 @@ class WebSocketManager:
 
                 # Pacing: use measured FPS so sleep is meaningful.
                 # config.streaming.fps (60) is the ceiling; measured FPS (~50) is reality.
-                measured_interval = self.frame_interval  # fallback to config ceiling
-                if hasattr(self.strategy, "_frames") and self.strategy._frames is not None:
-                    measured_interval = self.strategy._frames.measured_interval_s
-                target_dt = measured_interval * max(1, frame_count)
+                target_dt = self.strategy.measured_interval_s * max(1, frame_count)
                 sleep_for = target_dt - dt
                 if sleep_for > 0:
                     await asyncio.sleep(sleep_for)

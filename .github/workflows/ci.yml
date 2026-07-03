@@ -21,6 +21,10 @@ jobs:
         run: >
           uv run --frozen pytest -q
           tests/test_backend_wiring.py
+          tests/test_backends.py
+          tests/test_device_policy.py
+          tests/test_slot_messages.py
+          tests/test_audio_pipeline_offload.py
           tests/test_caching.py
           tests/test_hermes_contracts.py
           tests/test_hermes_integration.py

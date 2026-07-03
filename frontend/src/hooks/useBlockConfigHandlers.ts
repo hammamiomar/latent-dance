@@ -50,13 +50,13 @@ export function useBlockConfigHandlers(
   const handleBlockStrengthRangeChange = useCallback(
     (block: BlockCode, range: StrengthRange) => {
       blockActions.setBlockStrengthRange(block, range);
+      // strength_* is the steering amplitude; stage_* belongs to the
+      // destination dance model and must not mirror strengths.
       sendUpdateBlockConfig({
         action: 'update_block_config',
         block,
         strength_min: range.strengthMin,
         strength_max: range.strengthMax,
-        stage_left: range.strengthMin,
-        stage_right: range.strengthMax,
         stage_home: range.stageHome,
       });
     },

@@ -5,7 +5,7 @@ All messages exchanged over WebSocket are validated against these Pydantic model
 
 from typing import Annotated, Any, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 # ============================================================================
@@ -141,11 +141,13 @@ class SetSteeringMode(BaseModel):
 RankType = Literal[1, 2, 3, 4]
 
 
-class UpdateBlockConfig(BaseModel):
-    """Update configuration for an SAE block.
+class UpdateSlotConfig(BaseModel):
+    """Update configuration for one steering slot (any backend).
 
-    Uses LinkTarget for audio source, StrengthRange for intuitive bounds,
-    and ranking for the Dancer Ensemble architecture.
+    The unified Phase 3 message: SAE blocks today, RA-SAE concept slots
+    and future backends tomorrow, all ride this shape. Backend-specific
+    fields are optional; a backend ignores fields it doesn't declare in
+    its capabilities manifest.
 
     Ranking System:
         - Rank 1: Main dancer(s) - primary visual focus
@@ -155,11 +157,12 @@ class UpdateBlockConfig(BaseModel):
         - None/null: Auto - available for surprise promotion
 
     Note: SLERP rankings are configured per-destination via SetReactiveConfig,
-    not per-block. This keeps SAE steering separate from destination control.
+    not per-slot. This keeps slot steering separate from destination control.
     """
 
-    action: Literal["update_block_config"] = "update_block_config"
-    block: str  # SAE block name (down.2.1, mid.0, up.0.0, up.0.1)
+    action: Literal["update_slot_config"] = "update_slot_config"
+    # Accepts legacy "block" as an alias so v2 clients keep working
+    slot: str = Field(validation_alias=AliasChoices("slot", "block"))
     link_target: Optional[LinkTargetType] = None  # Audio source
     strength_min: Optional[float] = None
     strength_max: Optional[float] = None
@@ -168,7 +171,7 @@ class UpdateBlockConfig(BaseModel):
     auto_config: Optional[bool] = None  # If True, derive channel/layer/spatial from classification
 
     # Dancer Ensemble ranking (1-4 or None for auto)
-    sae_rank: Optional[RankType] = None  # Rank for SAE feature steering
+    sae_rank: Optional[RankType] = None  # Rank for slot steering
 
     # Spatial: draw (user-painted grid) or pitch_aligned (auto from audio)
     spatial_mode: Optional[SpatialModeType] = None
@@ -179,7 +182,8 @@ class UpdateBlockConfig(BaseModel):
     layer: Optional[LayerType] = None
     physics_preset: Optional[PhysicsPresetType] = None
 
-    # v4 dance model overrides
+    # v4 dance model overrides (stored for compatibility; runtime stage
+    # handling lives on the destination system's ReactiveConfig)
     stage_left: Optional[float] = None
     stage_home: Optional[float] = None
     stage_right: Optional[float] = None
@@ -190,6 +194,12 @@ class UpdateBlockConfig(BaseModel):
     drift_ms: Optional[float] = None
     intensity_curve: Optional[IntensityCurveType] = None
     intensity_gamma: Optional[float] = None
+
+
+class UpdateBlockConfig(UpdateSlotConfig):
+    """Legacy v2 name for UpdateSlotConfig — same fields, old action literal."""
+
+    action: Literal["update_block_config"] = "update_block_config"
 
 
 class SetDestinationLink(BaseModel):
@@ -318,9 +328,10 @@ ClientMessage = Annotated[
         AudioSeek,
         Stop,
         StopGeneration,
-        # SAE steering
+        # Slot steering (unified + legacy alias)
         StartSAESteering,
         SetSteeringMode,
+        UpdateSlotConfig,
         UpdateBlockConfig,
         # Composition
         SetCompositionConfig,
@@ -347,6 +358,17 @@ class ErrorMessage(BaseModel):
 
     type: Literal["error"] = "error"
     message: str
+
+
+class CapabilitiesMessage(BaseModel):
+    """Active backend's capability manifest, sent once on WebSocket connect.
+
+    Payload shape is owned by app.backends.BackendCapabilities.to_dict():
+    control-input manifest + slot display metadata + feature range + flags.
+    """
+
+    type: Literal["capabilities"] = "capabilities"
+    capabilities: dict
 
 
 class TrackInfo(BaseModel):
@@ -442,10 +464,15 @@ class DestinationStatus(BaseModel):
     mode: Literal["slider", "reactive", "linked"]
 
 
-class BlockConfigSnapshot(BaseModel):
-    """Snapshot of a block's configuration for UI sync."""
+class SlotConfigSnapshot(BaseModel):
+    """Snapshot of one slot's configuration for UI sync.
 
-    block: str
+    Serialized with both `slot` and legacy `block` keys until the Phase 4
+    frontend reads `slot`.
+    """
+
+    slot: str
+    block: str  # legacy duplicate of slot
     link_target: LinkTargetType
     strength_min: float
     strength_max: float
@@ -470,8 +497,15 @@ class BlockConfigSnapshot(BaseModel):
     intensity_gamma: Optional[float] = None
 
 
+# Legacy import name — same model
+BlockConfigSnapshot = SlotConfigSnapshot
+
+
 class BlockConfigs(BaseModel):
-    """Block config snapshot for frontend state sync."""
+    """Slot config snapshot for frontend state sync.
+
+    Wire type stays "block_configs" until the Phase 4 frontend switch.
+    """
 
     type: Literal["block_configs"] = "block_configs"
-    configs: dict[str, BlockConfigSnapshot]
+    configs: dict[str, SlotConfigSnapshot]

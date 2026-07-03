@@ -68,3 +68,6 @@ data/labeling/
 
 # SAE runtime checkpoints are downloaded/materialized locally.
 data/sdxl/sae_weights/
+
+# Obsidian vault config (notes/ is a vault)
+.obsidian/

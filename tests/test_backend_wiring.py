@@ -106,9 +106,12 @@ class TestStrategyFactory:
 class TestDependencyTypes:
     """Tests for dependency injection return types."""
 
-    def test_dependencies_module_imports_sae_pipeline(self):
+    def test_dependencies_have_no_backend_coupling(self):
+        """Phase 2: dependencies serve the active backend generically."""
         from app import dependencies
-        assert hasattr(dependencies, "SAESteerablePipeline")
+        assert not hasattr(dependencies, "SAESteerablePipeline")
+        assert hasattr(dependencies, "get_capabilities_ws")
+        assert hasattr(dependencies, "get_server_mode_ws")
 
     def test_strategies_module_exports_sae_strategy(self):
         from app import strategies
@@ -124,10 +127,13 @@ class TestMainAppConfiguration:
     replacing with runtime tests when possible.
     """
 
-    def test_main_imports_sae_pipeline(self):
+    def test_main_has_no_hardcoded_backend(self):
+        """Phase 2: main resolves the pipeline through the backend registry."""
         with open("app/main.py") as f:
             content = f.read()
-        assert "SAESteerablePipeline" in content
+        assert "SAESteerablePipeline" not in content
+        assert "HAMBA_MODE" in content
+        assert "get_backend" in content
 
     def test_main_has_lifespan_handler(self):
         with open("app/main.py") as f:

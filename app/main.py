@@ -1,27 +1,31 @@
-"""FastAPI application - SDXL-Turbo with SAE steering.
+"""FastAPI application - audio-reactive generation backends.
 
-This is the main entry point for the latent-dance backend.
+This is the main entry point for the latent-dance backend. The backend
+mode is selected by the HAMBA_MODE env var (default "sae_steering") and
+resolved through the registry in app/backends.py — one model per process.
 Pipeline initialization happens in the lifespan handler.
 """
 
 import asyncio
 import logging
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import torch
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.backends import get_backend
 from app.caching import CacheManager
 from hambajuba2ba.audio.library import SongLibrary
 from app.routers import audio, streaming
-from hambajuba2ba.config import PipelineConfig
-from hambajuba2ba.generation.pipeline import SAESteerablePipeline
+from hambajuba2ba.config import load_from_env
 
 # Configure logging to show all app logs.
 # Force-configure the root logger — logging.basicConfig() is a no-op when
@@ -63,25 +67,31 @@ logger = logging.getLogger("app.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load SDXL-Turbo + SAE on startup, cleanup on shutdown.
+    """Load the selected backend on startup, cleanup on shutdown.
 
     This runs once when the server starts. All expensive model loading
     happens here so requests don't pay the cost.
     """
-    # Config auto-detects device and dtype (see config.py __post_init__)
-    config = PipelineConfig()
+    # Defaults + HAMBAJUBA_* env overrides; device/dtype auto-detect when
+    # unset (see config/loader.py and PipelineConfig.resolve)
+    config = load_from_env()
+
+    # Backend selection — one model per process. get_backend fails loudly
+    # (listing registered modes) before any model weight is touched.
+    mode = os.environ.get("HAMBA_MODE", "sae_steering")
+    spec = get_backend(mode)
 
     logger.info("=" * 60)
-    logger.info("STARTUP: Loading SDXL-Turbo with SAE steering")
+    logger.info(f"STARTUP: Loading backend '{mode}' ({spec.mode_label})")
     logger.info(f"  Device: {config.device}")
     logger.info(f"  Dtype: {config.dtype}")
     logger.info(f"  PyTorch: {torch.__version__}")
     logger.info("=" * 60)
     logger.info(f"Config: {config.width}x{config.height}")
 
-    logger.info("Loading SDXL-Turbo pipeline...")
-    pipeline = SAESteerablePipeline(config)
-    pipeline.load()  # Downloads models, compiles CUDA graph, warmup
+    logger.info(f"Loading {spec.mode_label} pipeline...")
+    pipeline = spec.pipeline_factory(config)
+    pipeline.load()  # Downloads models, compiles graph, warmup
     logger.info("Pipeline ready!")
 
     # Execution resources (injected into strategies via DI, not globals)
@@ -99,9 +109,15 @@ async def lifespan(app: FastAPI):
     app.state.cpu_executor = cpu_executor
     app.state.audio_cache = audio_cache
     app.state.song_library = song_library
+    app.state.mode = mode
+    app.state.backend_spec = spec
+    # The manifest declares the backend's native resolution; the live config wins.
+    app.state.capabilities = replace(
+        spec.capabilities, output_resolution=(config.width, config.height)
+    )
 
     logger.info(f"Song library: {song_library.root}")
-    logger.info("Ready! SAE steering enabled.")
+    logger.info(f"Ready! Backend '{mode}' serving.")
     yield
 
     # Cleanup
@@ -130,9 +146,15 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def health():
+async def health(request: Request):
     """Health check endpoint."""
-    return {"status": "ok", "mode": "sae_steering"}
+    return {"status": "ok", "mode": request.app.state.mode}
+
+
+@app.get("/api/capabilities")
+async def capabilities(request: Request):
+    """Active backend's capability manifest (control inputs + UI hints)."""
+    return request.app.state.capabilities.to_dict()
 
 
 # ─── Static frontend serving (production) ────────────────────────────────
@@ -155,7 +177,7 @@ if __name__ == "__main__":
     import uvicorn
 
     # Load config for server settings
-    config = PipelineConfig()
+    config = load_from_env()
     uvicorn.run(
         app,
         host=config.server.host,

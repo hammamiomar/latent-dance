@@ -9,13 +9,14 @@ FastAPI's dependency resolution doesn't support Union types.
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from fastapi import Request, WebSocket
 
 from hambajuba2ba.config import PipelineConfig
 from hambajuba2ba.audio.library import SongLibrary
-from hambajuba2ba.generation.pipeline import SAESteerablePipeline
 
+from .backends import BackendCapabilities
 from .caching import CacheManager
 
 
@@ -36,9 +37,19 @@ def get_song_library(request: Request) -> SongLibrary:
 
 
 # WebSocket endpoint dependencies (use WebSocket)
-def get_pipeline_ws(websocket: WebSocket) -> SAESteerablePipeline:
-    """Dependency provider for the diffusion pipeline (WebSocket endpoints)."""
+def get_pipeline_ws(websocket: WebSocket) -> Any:
+    """Dependency provider for the active backend's pipeline (WebSocket endpoints)."""
     return websocket.app.state.pipeline
+
+
+def get_capabilities_ws(websocket: WebSocket) -> BackendCapabilities:
+    """Dependency provider for the active backend's capabilities (WebSocket endpoints)."""
+    return websocket.app.state.capabilities
+
+
+def get_server_mode_ws(websocket: WebSocket) -> str:
+    """Dependency provider for the backend mode this process serves (WebSocket endpoints)."""
+    return websocket.app.state.mode
 
 
 def get_config_ws(websocket: WebSocket) -> PipelineConfig:

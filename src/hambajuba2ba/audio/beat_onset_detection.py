@@ -55,11 +55,11 @@ def _detect_beats_beat_this(audio: np.ndarray, sr: int) -> Tuple[np.ndarray, flo
     try:
         sf.write(temp_path, audio, sr)
 
-        # Use GPU if available, CPU fallback
-        try:
-            file2beats = File2Beats(checkpoint_path="final0", device="cuda", dbn=False)
-        except Exception:
-            file2beats = File2Beats(checkpoint_path="final0", device="cpu", dbn=False)
+        # CUDA or CPU only — beat_this is unvalidated on MPS (like Demucs)
+        import torch
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        file2beats = File2Beats(checkpoint_path="final0", device=device, dbn=False)
 
         beats, downbeats = file2beats(temp_path)
     finally:

@@ -45,22 +45,33 @@ export function ModeBar({ activeMode, onModeChange, showHelp, onHelpToggle }: Mo
       .catch(() => {});
   }, []);
 
-  // Track brain window state — initial fetch + slow poll for external closures
+  // Track brain window state — initial fetch + slow poll for external closures.
+  // The bridge only exists inside the Electrobun shell; give up after a few
+  // misses so ?desktop=true in a plain browser doesn't ping forever.
   useEffect(() => {
     let cancelled = false;
+    let failures = 0;
+    let interval: number | undefined;
     const fetchStatus = () => {
       fetch(`http://localhost:${SHELL_BRIDGE_PORT}/brain/status`)
         .then((r) => r.json())
         .then((data) => {
+          failures = 0;
           if (!cancelled) setBrainOpen(Boolean(data.open));
         })
-        .catch(() => {});
+        .catch(() => {
+          failures += 1;
+          if (failures >= 3 && interval !== undefined) {
+            window.clearInterval(interval);
+            interval = undefined;
+          }
+        });
     };
     fetchStatus();
-    const interval = window.setInterval(fetchStatus, 2000);
+    interval = window.setInterval(fetchStatus, 2000);
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      if (interval !== undefined) window.clearInterval(interval);
     };
   }, []);
 

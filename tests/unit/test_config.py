@@ -21,15 +21,15 @@ from hambajuba2ba.config import PipelineConfig, SAEConfig
 class TestPipelineConfig:
     """Tests for PipelineConfig dataclass."""
 
-    def test_mps_forces_float32(self):
-        """MPS device should override float16 to float32 for stability.
+    def test_mps_derives_float32_by_default(self):
+        """MPS defaults to float32 (conservative), but explicit float16
+        is respected — validated on torch 2.10 / M1 Max (Jul 2026)."""
+        derived = PipelineConfig(device="mps")
+        assert derived.dtype == "float32"
 
-        This test catches the bug where MPS + float16 caused:
-        "Input type (float) and bias type (c10::Half) should be the same"
-        """
-        config = PipelineConfig(device="mps", dtype="float16")
-        assert config.dtype == "float32"
-        assert config.get_torch_dtype() == torch.float32
+        explicit = PipelineConfig(device="mps", dtype="float16")
+        assert explicit.dtype == "float16"
+        assert explicit.get_torch_dtype() == torch.float16
 
     def test_cuda_keeps_float16(self):
         """CUDA should preserve float16 for performance."""
@@ -147,3 +147,85 @@ class TestArtifacts:
             pattern.rsplit("/", 1)[-1] in RUNTIME_SAE_FILES
             for pattern in patterns
         )
+
+
+class TestVariant:
+    """The fp16 checkpoint variant is always the download target."""
+
+    def test_variant_is_fp16_for_every_dtype(self):
+        # diffusers upcasts fp16 files to torch_dtype at load, so float32
+        # devices (mps/cpu) get correct weights from half the download
+        assert PipelineConfig(device="cuda").variant == "fp16"
+        assert PipelineConfig(device="cpu").variant == "fp16"
+        assert PipelineConfig(device="cpu", dtype="float32").variant == "fp16"
+
+
+class TestEnvLoader:
+    """load_from_env applies HAMBAJUBA_* overrides coherently."""
+
+    @pytest.fixture(autouse=True)
+    def clean_hambajuba_env(self, monkeypatch):
+        """Strip stray HAMBAJUBA_* vars so tests see only what they set."""
+        import os
+
+        for key in list(os.environ):
+            if key.startswith("HAMBAJUBA_") or key.startswith("HAMBA_"):
+                monkeypatch.delenv(key, raising=False)
+
+    def test_device_override_rederives_dtype(self, monkeypatch):
+        """HAMBAJUBA_DEVICE=cpu must not keep a float16 derived for CUDA."""
+        from hambajuba2ba.config import base as config_base
+        from hambajuba2ba.config import load_from_env
+
+        # Simulate a CUDA box: construction derives float16, then the env
+        # override to cpu must re-derive float32 (the staleness bug)
+        monkeypatch.setattr(config_base, "autodetect", lambda: "cuda")
+        monkeypatch.setenv("HAMBAJUBA_DEVICE", "cpu")
+        config = load_from_env()
+        assert config.device == "cpu"
+        assert config.dtype == "float32"
+
+    def test_explicit_dtype_override_wins(self, monkeypatch):
+        from hambajuba2ba.config import load_from_env
+
+        monkeypatch.setenv("HAMBAJUBA_DEVICE", "cpu")
+        monkeypatch.setenv("HAMBAJUBA_DTYPE", "float16")
+        config = load_from_env()
+        assert config.device == "cpu"
+        assert config.dtype == "float16"
+
+    def test_explicit_mps_float16_respected_via_env(self, monkeypatch):
+        """HAMBAJUBA_DTYPE=float16 on MPS is honored (fast local mode);
+        only the DERIVED default stays float32."""
+        from hambajuba2ba.config import load_from_env
+
+        monkeypatch.setenv("HAMBAJUBA_DEVICE", "mps")
+        monkeypatch.setenv("HAMBAJUBA_DTYPE", "float16")
+        config = load_from_env()
+        assert config.device == "mps"
+        assert config.dtype == "float16"
+
+    def test_feature_device_env_reaches_audio_config(self, monkeypatch):
+        from hambajuba2ba.config import load_from_env
+
+        monkeypatch.setenv("HAMBAJUBA_AUDIO_FEATURE_DEVICE", "mps")
+        monkeypatch.setenv("HAMBAJUBA_AUDIO_FEATURE_BACKEND", "torch")
+        config = load_from_env()
+        assert config.audio.feature_device == "mps"
+        assert config.audio.feature_backend == "torch"
+
+    def test_every_env_map_path_shape_applies(self, monkeypatch):
+        """All four path shapes: top-level, top-level+converter,
+        nested, nested+converter. The (attr, converter) shape used to
+        crash _set_nested (it was parsed as (section, attr))."""
+        from hambajuba2ba.config import load_from_env
+
+        monkeypatch.setenv("HAMBAJUBA_DEVICE", "cpu")  # (attr,)
+        monkeypatch.setenv("HAMBAJUBA_WARMUP_ITERATIONS", "7")  # (attr, int)
+        monkeypatch.setenv("HAMBAJUBA_SERVER_HOST", "0.0.0.0")  # (section, attr)
+        monkeypatch.setenv("HAMBAJUBA_SERVER_PORT", "9100")  # (section, attr, int)
+        config = load_from_env()
+        assert config.device == "cpu"
+        assert config.warmup_iterations == 7
+        assert config.server.host == "0.0.0.0"
+        assert config.server.port == 9100

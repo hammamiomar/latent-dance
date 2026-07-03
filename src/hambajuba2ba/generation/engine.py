@@ -1,7 +1,8 @@
 """Direct SDXL-Turbo inference engine — bypasses diffusers Pipeline.__call__().
 
-Compiles the entire inference path (UNet + Euler step + VAE decode + uint8)
-as a single torch.compile graph for maximum GPU throughput.
+On CUDA, compiles the entire inference path (UNet + Euler step + VAE decode
++ uint8) as a single torch.compile graph for maximum GPU throughput. On
+mps/cpu the same path runs eager (see hambajuba2ba.device.compile_mode).
 
 For SDXL-Turbo 1-step inference, the scheduler reduces to pure tensor math:
 
@@ -21,13 +22,9 @@ import time
 
 import torch
 
-logger = logging.getLogger(__name__)
+from hambajuba2ba.device import compile_mode, synchronize
 
-# ---------------------------------------------------------------------------
-# Global Dynamo settings — must be set BEFORE any torch.compile call
-# ---------------------------------------------------------------------------
-torch.set_float32_matmul_precision("medium")  # TF32 matmuls (3.5x on Blackwell)
-torch._dynamo.config.capture_scalar_outputs = True  # avoid graph breaks from scalars
+logger = logging.getLogger(__name__)
 
 
 class SDXLTurboEngine:
@@ -110,32 +107,35 @@ class SDXLTurboEngine:
     # ------------------------------------------------------------------
 
     def compile(self, warmup_iters: int = 10) -> None:
-        """Compile the unified inference graph and run warmup.
+        """Prepare the inference path and run warmup.
 
-        Uses fullgraph=True + reduce-overhead + dynamic=False for a single
-        CUDA graph covering UNet → Euler step → VAE decode → uint8.
+        On CUDA: fullgraph=True + reduce-overhead + dynamic=False compiles
+        UNet → Euler step → VAE decode → uint8 into a single CUDA graph.
+        On mps/cpu the path runs eager (see device.compile_mode) — warmup
+        still runs to initialize kernels and surface shape errors early.
 
         Args:
-            warmup_iters: Warmup iterations for CUDA graph capture (~10).
+            warmup_iters: Warmup iterations (CUDA graph capture needs ~3-10).
         """
-        # reduce-overhead: CUDA graphs without Triton kernel autotuning.
-        # max-autotune would be ideal but TritonGPUAccelerateMatmul crashes
-        # on Blackwell (cc=120) — Triton's MLIR pass pipeline fails for
-        # matmul shapes in SDXL UNet. cuBLAS handles these fine via
-        # reduce-overhead. Revisit when Triton ships Blackwell fixes.
-        mode = "reduce-overhead"
-        logger.info(
-            "Compiling unified inference graph "
-            "(fullgraph=True, mode=%s, dynamic=False) ...",
-            mode,
-        )
-
-        self._compiled_generate = torch.compile(
-            self._generate_impl,
-            fullgraph=True,
-            mode=mode,
-            dynamic=False,
-        )
+        mode = compile_mode(self.device)
+        if mode is None:
+            logger.info("Eager inference path on %s (no torch.compile)", self.device)
+            self._compiled_generate = self._generate_impl
+            # No graph to capture — one iteration initializes kernels and
+            # surfaces shape errors; more is pure cost at eager speeds.
+            warmup_iters = min(warmup_iters, 1)
+        else:
+            logger.info(
+                "Compiling unified inference graph "
+                "(fullgraph=True, mode=%s, dynamic=False) ...",
+                mode,
+            )
+            self._compiled_generate = torch.compile(
+                self._generate_impl,
+                fullgraph=True,
+                mode=mode,
+                dynamic=False,
+            )
 
         # Warmup with dummy tensors that match real shapes
         dummy_latent = torch.randn(
@@ -146,10 +146,7 @@ class SDXLTurboEngine:
         dummy_pe = torch.randn(1, 77, 2048, device=self.device, dtype=self.dtype)
         dummy_pool = torch.randn(1, 1280, device=self.device, dtype=self.dtype)
 
-        logger.info(
-            "Running %d warmup iterations; first iteration performs torch.compile",
-            warmup_iters,
-        )
+        logger.info("Running %d warmup iterations ...", warmup_iters)
         warmup_start = time.perf_counter()
         with torch.inference_mode():
             for i in range(warmup_iters):
@@ -159,7 +156,7 @@ class SDXLTurboEngine:
                     dummy_latent, dummy_noise, dummy_pe, dummy_pool
                 )
                 elapsed = time.perf_counter() - iter_start
-                suffix = " (graph compiled)" if i == 0 else ""
+                suffix = " (graph compiled)" if i == 0 and mode is not None else ""
                 logger.info(
                     "  warmup %d/%d complete in %.1fs%s",
                     i + 1,
@@ -167,7 +164,7 @@ class SDXLTurboEngine:
                     elapsed,
                     suffix,
                 )
-        torch.cuda.synchronize()
+        synchronize(self.device)
         logger.info("Engine warmup complete in %.1fs", time.perf_counter() - warmup_start)
 
     # ------------------------------------------------------------------

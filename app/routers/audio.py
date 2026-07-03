@@ -33,7 +33,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import soundfile as sf
-import torch
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -47,6 +46,7 @@ from hambajuba2ba.audio import (
     extract_virtual_stems,
 )
 from hambajuba2ba.audio.beat_onset_detection import detect_beats
+from hambajuba2ba.device import autodetect
 from hambajuba2ba.audio.coupling import CrossStemFeatures
 from hambajuba2ba.audio.features import FEATURE_CACHE_VERSION, StemFeatures
 from hambajuba2ba.audio.library import SongLibrary, SongRecord
@@ -124,14 +124,15 @@ atexit.register(_cleanup_temp_storage)
 
 
 def _get_device() -> str:
-    """Get the best available device for audio processing."""
-    if torch.cuda.is_available():
-        return "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    else:
-        logger.warning("CUDA not available, using CPU for Demucs (slower)")
-        return "cpu"
+    """Best available device for audio processing.
+
+    Single probe lives in hambajuba2ba.device; StemSeparator clamps
+    mps -> cpu itself (Demucs is unvalidated on MPS).
+    """
+    device = autodetect()
+    if device == "cpu":
+        logger.warning("No GPU available, using CPU for Demucs (slower)")
+    return device
 
 
 def _save_stems_to_cache(
@@ -208,6 +209,54 @@ def _validate_physical_stems(stems: Dict[str, np.ndarray]) -> None:
             )
         if audio_data.size == 0:
             raise ValueError(f"Stem {stem_name} is empty")
+
+
+# ============================================================================
+# Blocking-work helpers
+#
+# Everything below does seconds of CPU/disk work. Callers in async routes must
+# run these via asyncio.to_thread so status polls and live WebSocket sessions
+# stay responsive during processing. Do NOT use the app's cpu_executor for
+# these — that pool is sized for per-frame JPEG encoding.
+# ============================================================================
+
+
+def _load_cached_stems_sync(
+    stem_files: Dict[str, str],
+    mix_file: str,
+    sample_rate: int,
+) -> Tuple[Dict[str, np.ndarray], float]:
+    """Load cached stem WAVs for feature extraction."""
+    import librosa
+
+    stems = {}
+    for stem_name, stem_path in stem_files.items():
+        audio_data, _ = librosa.load(stem_path, sr=sample_rate, mono=True)
+        stems[stem_name] = audio_data.astype(np.float32)
+    _validate_physical_stems(stems)
+    return stems, get_audio_duration(mix_file)
+
+
+def _detect_beats_sync(stems: Dict[str, np.ndarray], sr: int) -> Tuple[np.ndarray, float]:
+    """BPM/beat detection on the drums stem, falling back to the mix."""
+    drums_audio = stems.get("drums")
+    if drums_audio is None:
+        drums_audio = sum(stems.values())  # Mix fallback
+    return detect_beats(drums_audio, sr=sr)
+
+
+def _persist_upload_sync(content: bytes, suffix: str) -> Tuple[str, str]:
+    """Write uploaded bytes to a temp file and hash them."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    return tmp_path, _hash_audio_content(content)
+
+
+def _hash_file_sync(path: str) -> str:
+    """Hash a file's content (reads the whole file)."""
+    with open(path, "rb") as f:
+        return _hash_audio_content(f.read())
 
 
 # ============================================================================
@@ -654,19 +703,14 @@ async def _process_audio_pipeline(
             await _set_status(audio_id, {"status": "loading_cache", "progress": 0.5})
 
             # Load stems from cache for feature extraction
-            import librosa
-            stems = {}
-            for stem_name, stem_path in stem_files.items():
-                audio_data, _ = librosa.load(stem_path, sr=config.audio.sample_rate, mono=True)
-                stems[stem_name] = audio_data.astype(np.float32)
-            _validate_physical_stems(stems)
-
-            duration = get_audio_duration(mix_file)
+            stems, duration = await asyncio.to_thread(
+                _load_cached_stems_sync, stem_files, mix_file, config.audio.sample_rate
+            )
         else:
             await _set_status(audio_id, {"status": "separating", "progress": 0.1})
 
             # Get duration
-            duration = get_audio_duration(tmp_path)
+            duration = await asyncio.to_thread(get_audio_duration, tmp_path)
             logger.info(f"Audio {audio_id}: Duration={duration:.2f}s, starting separation...")
 
             # Separate stems (auto-detect device, use configured cache dir)
@@ -684,8 +728,10 @@ async def _process_audio_pipeline(
             logger.info(f"Audio {audio_id}: Caching stems to {content_hash}...")
 
             # Save stems and mix to cache for reuse
-            stem_files = _save_stems_to_cache(content_hash, stems, cache_root, sr=config.audio.sample_rate)
-            mix_file = _save_mix_to_cache(content_hash, tmp_path, cache_root)
+            stem_files = await asyncio.to_thread(
+                _save_stems_to_cache, content_hash, stems, cache_root, sr=config.audio.sample_rate
+            )
+            mix_file = await asyncio.to_thread(_save_mix_to_cache, content_hash, tmp_path, cache_root)
             logger.info(f"Audio {audio_id}: Cached {len(stem_files)} stems + mix")
 
         # Check feature cache (persists across restarts)
@@ -694,7 +740,8 @@ async def _process_audio_pipeline(
         feature_cache = None
 
         if config.audio.enable_feature_cache:
-            feature_cache = _load_feature_cache(
+            feature_cache = await asyncio.to_thread(
+                _load_feature_cache,
                 content_hash,
                 cache_root,
                 feature_level,
@@ -715,15 +762,15 @@ async def _process_audio_pipeline(
             logger.info(f"Audio {audio_id}: Detecting BPM and extracting virtual stems...")
 
             # Detect BPM using Beat This! (ISMIR 2024 state-of-the-art)
-            # Use drums stem for best accuracy, fallback to mix
-            drums_audio = stems.get("drums")
-            if drums_audio is None:
-                drums_audio = sum(stems.values())  # Mix fallback
-            beats, bpm = detect_beats(drums_audio, sr=config.audio.sample_rate)
+            beats, bpm = await asyncio.to_thread(
+                _detect_beats_sync, stems, config.audio.sample_rate
+            )
             logger.info(f"Audio {audio_id}: Beat detection complete: BPM={bpm:.1f}, beats={len(beats)}")
 
             # Extract virtual stems (bandpass filtering)
-            all_stems = extract_virtual_stems(stems, sr=config.audio.sample_rate)
+            all_stems = await asyncio.to_thread(
+                extract_virtual_stems, stems, sr=config.audio.sample_rate
+            )
             all_stem_names = list(all_stems.keys())
             logger.info(f"Audio {audio_id}: Virtual stems extracted: {all_stem_names}")
 
@@ -733,7 +780,8 @@ async def _process_audio_pipeline(
             # Extract perceptual features + cross-stem coupling in one call
             sr = config.audio_sample_rate
             fps = int(config.fps)
-            features, cross_stem_features = extract_all_features(
+            features, cross_stem_features = await asyncio.to_thread(
+                extract_all_features,
                 all_stems,
                 sr=sr,
                 fps=fps,
@@ -749,7 +797,8 @@ async def _process_audio_pipeline(
 
             # Save features to disk cache for future restarts
             if config.audio.enable_feature_cache:
-                _save_feature_cache(
+                await asyncio.to_thread(
+                    _save_feature_cache,
                     content_hash=content_hash,
                     features=features,
                     cross_stem=cross_stem_features,
@@ -776,7 +825,9 @@ async def _process_audio_pipeline(
             mix_path=mix_file,
         )
 
-        cache_payload = _build_audio_cache_payload(
+        # Song curves/profile/analysis crunch full-track arrays — keep off the loop
+        cache_payload = await asyncio.to_thread(
+            _build_audio_cache_payload,
             features=features,
             cross_stem_features=cross_stem_features,
             duration=duration,
@@ -896,24 +947,21 @@ async def upload_and_separate(
     await _set_status(audio_id, {"status": "uploading", "progress": 0.0})
 
     cache_root = _get_cache_root(config)
-    tmp_path: str | None = None
-    # Save uploaded file
+    content = await file.read()
+
+    # Double-check size after reading (in case header was wrong).
+    # Raising before the temp file exists also avoids leaking it.
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(content) / 1e6:.1f}MB). Max: {config.audio.max_upload_mb}MB",
+        )
+
+    # Persist + hash off the loop — sha256 over a large upload costs hundreds of ms
     suffix = f".{ext}" if ext else ".mp3"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-
-        # Double-check size after reading (in case header was wrong)
-        if len(content) > max_size:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large ({len(content) / 1e6:.1f}MB). Max: {config.audio.max_upload_mb}MB",
-            )
-
-        tmp.write(content)
-        tmp_path = tmp.name
+    tmp_path, content_hash = await asyncio.to_thread(_persist_upload_sync, content, suffix)
 
     file_size_mb = len(content) / 1e6
-    content_hash = _hash_audio_content(content)
     logger.info(f"Audio {audio_id}: Uploaded {file_size_mb:.1f}MB, hash={content_hash}")
 
     if async_mode:
@@ -1023,7 +1071,9 @@ async def activate_library_song(
     record = song_library.get_song(song_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Song not found")
-    return _activate_library_song(
+    # Feature-cache loads + payload build are disk/CPU heavy — keep off the loop
+    return await asyncio.to_thread(
+        _activate_library_song,
         record=record,
         song_library=song_library,
         config=config,
@@ -1121,9 +1171,7 @@ async def download_from_youtube(
             logger.info(f"Audio {audio_id}: Downloaded to {tmp_path}")
 
             # Hash the downloaded content for caching
-            with open(tmp_path, "rb") as f:
-                content = f.read()
-            content_hash = _hash_audio_content(content)
+            content_hash = await asyncio.to_thread(_hash_file_sync, tmp_path)
             logger.info(f"Audio {audio_id}: Content hash={content_hash}")
 
             result = await _process_audio_pipeline(

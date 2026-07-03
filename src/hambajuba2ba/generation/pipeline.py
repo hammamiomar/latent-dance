@@ -9,7 +9,7 @@ Usage:
     from hambajuba2ba import PipelineConfig
     from hambajuba2ba.generation.pipeline import SAESteerablePipeline
 
-    config = PipelineConfig(pipeline_type="sdxl_sae", device="cuda")
+    config = PipelineConfig(device="cuda")
     pipe = SAESteerablePipeline(config)
     pipe.load()
 
@@ -27,6 +27,7 @@ from diffusers import AutoPipelineForImage2Image, AutoencoderTiny
 
 from hambajuba2ba.artifacts import resolve_sae_weights_dir
 from hambajuba2ba.config import PipelineConfig
+from hambajuba2ba.device import configure_backend, empty_cache
 from .engine import SDXLTurboEngine
 from .sae import InlineSAEManager
 
@@ -50,7 +51,7 @@ class SAESteerablePipeline:
         """Initialize pipeline with config.
 
         Args:
-            config: Pipeline configuration (should have pipeline_type="sdxl_sae")
+            config: Pipeline configuration
         """
         self.config = config
         self.pipe = None
@@ -78,6 +79,10 @@ class SAESteerablePipeline:
 
         This is expensive (~2 minutes first time for model download).
         """
+        # Process-wide torch settings (matmul precision, dynamo config,
+        # cudnn benchmark) — must precede engine compile; see device.py.
+        configure_backend(self.device)
+
         logger.info(f"Loading SDXL-Turbo from {self.config.sdxl_model_id}")
 
         # Load SDXL-Turbo pipeline
@@ -142,11 +147,11 @@ class SAESteerablePipeline:
 
         self.pipe.vae.train(False)
 
-        # CUDA optimizations
+        # channels_last is a model-layout choice, validated on CUDA only
+        # (process-wide flags like cudnn.benchmark live in device.py)
         if self.device == "cuda":
             self.pipe.unet = self.pipe.unet.to(memory_format=torch.channels_last)
             self.pipe.vae = self.pipe.vae.to(memory_format=torch.channels_last)
-            torch.backends.cudnn.benchmark = True
 
     @property
     def steering_manager(self) -> InlineSAEManager | None:
@@ -269,7 +274,7 @@ class SAESteerablePipeline:
         self._cached_prompt = None
         self._cached_embeds = None
 
-        # Clear GPU cache
-        torch.cuda.empty_cache()
+        # Clear device allocator cache
+        empty_cache(self.device)
 
-        logger.info("GPU cache cleared")
+        logger.info("Device cache cleared")

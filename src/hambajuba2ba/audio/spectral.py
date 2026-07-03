@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover - torch may be unavailable in tests
 
 
 SpectralBackend = Literal["librosa", "torch", "auto"]
-SpectralDevice = Literal["auto", "cuda", "cpu"]
+SpectralDevice = Literal["auto", "cuda", "mps", "cpu"]
 
 
 @dataclass
@@ -33,7 +33,11 @@ class Spectrogram:
 
 def _resolve_backend(backend: SpectralBackend, device: SpectralDevice) -> tuple[str, str]:
     if backend == "auto":
-        if torch is not None and (device == "cuda" or (device == "auto" and torch.cuda.is_available())):
+        # Explicit GPU request wins; "auto" only self-selects CUDA —
+        # MPS DSP is opt-in until validated on real songs.
+        if torch is not None and device in ("cuda", "mps"):
+            return "torch", device
+        if torch is not None and device == "auto" and torch.cuda.is_available():
             return "torch", "cuda"
         return "librosa", "cpu"
     if backend == "torch":

@@ -22,27 +22,28 @@ from pydantic import BaseModel
 
 from app.caching import CacheManager
 from app.generation import FrameItem
+from hambajuba2ba.device import synchronize
 from hambajuba2ba.generation.encoding import gpu_to_cpu_tensor
 from app.schemas import (
     DestinationStatus,
     BlockConfigs,
-    BlockConfigSnapshot,
+    SlotConfigSnapshot,
 )
 from app.strategies.base import GenerationStrategy
 
 # Handlers
 from app.strategies.handlers import (
     handle_audio_message,
-    handle_stem_message,
+    handle_slot_message,
     handle_destination_message,
     handle_modulation_message,
 )
 from app.strategies.handlers.audio_handlers import is_audio_message
-from app.strategies.handlers.slot_handlers import is_stem_message
+from app.strategies.handlers.slot_handlers import is_slot_message
 from app.strategies.handlers.destination_handlers import is_destination_message
 from app.strategies.handlers.modulation_handlers import is_modulation_message
 
-from hambajuba2ba.audio.focus_config import DEFAULT_BLOCK_CONFIGS
+from hambajuba2ba.config.slots import DEFAULT_BLOCK_CONFIGS
 from hambajuba2ba.config import PipelineConfig
 from hambajuba2ba.generation.pipeline import SAESteerablePipeline
 from hambajuba2ba.bridge.destinations import DestinationModulator, Destination
@@ -172,14 +173,15 @@ class SAESteeringStrategy(GenerationStrategy):
                 label="Current prompt",
             ))
 
-    def _serialize_slot_configs(self) -> Dict[str, BlockConfigSnapshot]:
-        """Serialize current block configs for frontend sync."""
-        payload: Dict[str, BlockConfigSnapshot] = {}
+    def _serialize_slot_configs(self) -> Dict[str, SlotConfigSnapshot]:
+        """Serialize current slot configs for frontend sync."""
+        payload: Dict[str, SlotConfigSnapshot] = {}
         for block, cfg in self._get_slot_configs().items():
             physics_preset = cfg.physics_preset
             if physics_preset == "default":
                 physics_preset = "ambient"
-            payload[block] = BlockConfigSnapshot(
+            payload[block] = SlotConfigSnapshot(
+                slot=cfg.block,
                 block=cfg.block,
                 link_target=cfg.link_target,
                 strength_min=cfg.strength_min,
@@ -400,8 +402,7 @@ class SAESteeringStrategy(GenerationStrategy):
                 noise=noise,
                 steerings=steering,
             )
-        if self.pipeline.device == "cuda":
-            torch.cuda.synchronize()
+        synchronize(self.pipeline.device)
         infer_ms = (time.perf_counter() - t_infer) * 1000
 
         if gpu_img is None:
@@ -444,8 +445,8 @@ class SAESteeringStrategy(GenerationStrategy):
         if is_audio_message(message):
             return handle_audio_message(self, message)
 
-        if is_stem_message(message):
-            response = handle_stem_message(self, message)
+        if is_slot_message(message):
+            response = handle_slot_message(self, message)
             if response is not None:
                 return response
             return BlockConfigs(configs=self._serialize_slot_configs()).model_dump()

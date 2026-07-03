@@ -7,25 +7,24 @@ from .base import PipelineConfig
 
 
 def _set_nested(config: PipelineConfig, path: Tuple, value: str) -> None:
-    """Set a nested config value from a path tuple.
+    """Set a (possibly nested) config value from an env-map path.
+
+    Path grammar: attribute names, then an optional trailing converter —
+    ("device",), ("height", int), ("server", "host"), ("server", "port", int).
+    Strings are never callable, so a callable tail is always the converter.
 
     Args:
         config: PipelineConfig instance
-        path: Tuple like ("server", "port", int) or ("device",)
+        path: Attribute path per the grammar above
         value: String value from environment
     """
-    if len(path) == 1:
-        # Top-level attribute
-        setattr(config, path[0], value)
-    elif len(path) == 2:
-        # Nested attribute without type conversion
-        nested = getattr(config, path[0])
-        setattr(nested, path[1], value)
-    elif len(path) == 3:
-        # Nested attribute with type conversion
-        nested = getattr(config, path[0])
-        converter = path[2]
-        setattr(nested, path[1], converter(value))
+    if callable(path[-1]):
+        value = path[-1](value)
+        path = path[:-1]
+    target = config
+    for name in path[:-1]:
+        target = getattr(target, name)
+    setattr(target, path[-1], value)
 
 
 def load_from_env(config: Optional[PipelineConfig] = None) -> PipelineConfig:
@@ -61,6 +60,8 @@ def load_from_env(config: Optional[PipelineConfig] = None) -> PipelineConfig:
         "HAMBAJUBA_AUDIO_CACHE_TTL": ("audio", "cache_ttl_seconds", int),
         "HAMBAJUBA_AUDIO_DEFAULT_BPM": ("audio", "default_bpm", float),
         "HAMBAJUBA_AUDIO_FEATURE_LEVEL": ("audio", "feature_level"),
+        "HAMBAJUBA_AUDIO_FEATURE_BACKEND": ("audio", "feature_backend"),
+        "HAMBAJUBA_AUDIO_FEATURE_DEVICE": ("audio", "feature_device"),
         "HAMBAJUBA_AUDIO_COUPLING_STEMS": ("audio", "coupling_stems"),
         "HAMBAJUBA_AUDIO_FEATURE_CACHE": ("audio", "enable_feature_cache", lambda x: x.lower() == "true"),
         "HAMBAJUBA_AUDIO_SONG_LIBRARY_DIR": ("audio", "song_library_dir"),
@@ -98,6 +99,13 @@ def load_from_env(config: Optional[PipelineConfig] = None) -> PipelineConfig:
                 logging.getLogger(__name__).warning(
                     f"Failed to apply env var {env_key}={value}: {e}"
                 )
+
+    # An overridden device invalidates the dtype derived at construction
+    # (HAMBAJUBA_DEVICE=cpu on a CUDA box must not keep float16). An
+    # explicit HAMBAJUBA_DTYPE still wins; resolve() is idempotent.
+    if os.getenv("HAMBAJUBA_DEVICE") and not os.getenv("HAMBAJUBA_DTYPE"):
+        config.dtype = None
+    config.resolve()
 
     return config
 
@@ -158,4 +166,9 @@ def _merge_dict_to_config(config: PipelineConfig, data: Dict[str, Any]) -> Pipel
             else:
                 # Top-level attribute
                 setattr(config, key, value)
+
+    # Same invariant as the env path: a YAML device override without an
+    # explicit dtype re-derives it (load_config resolves via load_from_env).
+    if "device" in data and "dtype" not in data:
+        config.dtype = None
     return config

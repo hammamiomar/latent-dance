@@ -12,7 +12,7 @@ from typing import Optional, Protocol, TYPE_CHECKING
 if TYPE_CHECKING:
     from hambajuba2ba.audio.features import StemFeatures
     from hambajuba2ba.audio.classification import ComponentClassification
-    from hambajuba2ba.audio.focus_config import BlockLinkConfig
+    from hambajuba2ba.config.slots import BlockLinkConfig
     from hambajuba2ba.audio.sampler import AudioSampler
     from hambajuba2ba.bridge.physics_manager import PhysicsManager
     from hambajuba2ba.bridge.spatial_manager import SpatialManager

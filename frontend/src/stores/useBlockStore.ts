@@ -316,8 +316,11 @@ export const useBlockStore = create<BlockState>()(
                   block: cfg.block,
                   linkTarget: cfg.link_target,
                   strengthRange: {
-                    strengthMin: cfg.stage_left ?? cfg.strength_min,
-                    strengthMax: cfg.stage_right ?? cfg.strength_max,
+                    // strength_* is authoritative — stage_* are legacy dance-model
+                    // fields stuck at backend defaults (±30) since the mirror was
+                    // removed; preferring them clobbered user ranges on every ACK
+                    strengthMin: cfg.strength_min,
+                    strengthMax: cfg.strength_max,
                     stageHome: cfg.stage_home ?? next[block].strengthRange.stageHome,
                   },
                   featureId: cfg.feature_id,

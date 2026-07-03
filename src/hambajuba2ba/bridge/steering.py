@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Dict, Optional
 
-from hambajuba2ba.audio.focus_config import BlockLinkConfig, get_base_stem
+from hambajuba2ba.config.slots import BlockLinkConfig, get_base_stem
 from hambajuba2ba.audio.prominence import ProminenceEngine, compute_all_prominences
 from hambajuba2ba.bridge.destinations import apply_intensity_curve
 
@@ -33,7 +33,8 @@ class SteeringComputation:
       (spring for drums, pitch_follow for vocals, oscillator for pads, perlin for texture)
     - Value is mapped to [strength_min, strength_max]
     - ProminenceEngine scales by musical context (novelty, coupling, activity gate, surprise)
-    - No more PositionFollower or apply_intensity_curve for SAE blocks
+    - PositionFollower is gone; an optional gamma/clip intensity curve still
+      shapes the physics value before strength mapping
 
     Usage:
         computation = SteeringComputation()

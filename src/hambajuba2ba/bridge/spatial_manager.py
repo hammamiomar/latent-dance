@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 import torch
 
-from hambajuba2ba.audio.focus_config import get_base_stem
+from hambajuba2ba.config.slots import get_base_stem
 from hambajuba2ba.bridge.spatial import (
     generate_pitch_indexed_masks,
     generate_pitch_indexed_masks_gpu,
@@ -20,7 +20,7 @@ from hambajuba2ba.bridge.spatial import (
 )
 
 if TYPE_CHECKING:
-    from hambajuba2ba.audio.focus_config import BlockLinkConfig
+    from hambajuba2ba.config.slots import BlockLinkConfig
     from hambajuba2ba.audio.sampler import AudioSampler
 
 logger = logging.getLogger("uvicorn")

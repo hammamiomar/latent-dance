@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import BaseModel
 
 from app.schemas import AudioPlay, AudioPause, AudioSeek, AudioTimeUpdate
-from hambajuba2ba.audio.focus_config import get_base_stem
+from hambajuba2ba.config.slots import get_base_stem
 
 if TYPE_CHECKING:
     from app.strategies.protocol import StrategyProtocol

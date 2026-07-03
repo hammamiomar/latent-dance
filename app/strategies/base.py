@@ -17,20 +17,20 @@ from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import torch
 from fastapi import WebSocket
 from pydantic import BaseModel
 
 from app.caching import CacheManager
 from app.generation import FrameItem
 from app.schemas import ExtendedStemActivity, SongIntelligenceMessage, TrackInfo
-from hambajuba2ba.audio.focus_config import BlockLinkConfig, get_base_stem
+from hambajuba2ba.config.slots import BlockLinkConfig, get_base_stem
 from hambajuba2ba.audio.prominence import compute_all_prominences
 from hambajuba2ba.audio.sampler import AudioSampler
 from hambajuba2ba.bridge import SteeringComputation, PhysicsManager, SpatialManager
 from hambajuba2ba.bridge.clock import AudioClock
 from hambajuba2ba.bridge.composition import CompositionEngine
 from hambajuba2ba.config import PipelineConfig
+from hambajuba2ba.device import empty_cache
 from app.strategies.managers import FrameManager
 
 logger = logging.getLogger("uvicorn")
@@ -222,10 +222,9 @@ class GenerationStrategy(ABC):
         # Composition (shared — uses pipeline.engine._latent_shape)
         self._init_composition(cached)
 
-        # Clear CUDA cache before generation
-        if self.pipeline.device == "cuda":
-            torch.cuda.empty_cache()
-            logger.info("Cleared CUDA cache before generation")
+        # Boundary-time cache relief on any device (scene start)
+        empty_cache(self.pipeline.device)
+        logger.info("Cleared device cache before generation")
 
         # Start clock
         now = time.perf_counter()
@@ -244,7 +243,9 @@ class GenerationStrategy(ABC):
 
         self._spatial = SpatialManager(
             device=self.pipeline.device,
-            dtype=torch.float16,
+            # Follow the config dtype (float16 on CUDA, float32 on mps/cpu)
+            # so masks match model dtype on every device.
+            dtype=self.config.get_torch_dtype(),
             latent_h=self.config.latent_height,
             latent_w=self.config.latent_width,
         )
@@ -407,9 +408,11 @@ class GenerationStrategy(ABC):
         dt = min(dt, 0.1)
         self._last_frame_time = t_start
 
-        # Periodic CUDA cache clear
+        # Periodic cache clear — deliberately CUDA-only: this is a
+        # CUDA-allocator workaround (slated for measure-then-delete);
+        # an MPS cache clear mid-loop would be a new, unmeasured stall.
         if self.pipeline.device == "cuda" and self._frame_count % 300 == 0:
-            torch.cuda.empty_cache()
+            empty_cache(self.pipeline.device)
 
         # Collect previous encode
         prev_jpeg = await self._frames.collect_previous()
@@ -552,6 +555,24 @@ class GenerationStrategy(ABC):
         else:
             self._next_due_ts += interval
         return self._next_due_ts
+
+    def get_perf_snapshot(self) -> dict:
+        """Encoder/timing stats + scheduler state for perf telemetry.
+
+        The one sanctioned way for transport code to read strategy perf
+        state — WebSocketManager must not reach into private attributes.
+        """
+        snapshot = self._frames.get_perf_snapshot() if self._frames else {}
+        snapshot["measured_fps"] = self._frames.measured_fps if self._frames else 0.0
+        snapshot["lookahead_ms"] = self._lookahead_s * 1000
+        return snapshot
+
+    @property
+    def measured_interval_s(self) -> float:
+        """Seconds per frame from measured FPS (config rate before calibration)."""
+        if self._frames is not None:
+            return self._frames.measured_interval_s
+        return 1.0 / max(1.0, self._fps)
 
     def _update_lookahead(self, now: float) -> None:
         """Recompute predictive lookahead from FrameManager measurements.

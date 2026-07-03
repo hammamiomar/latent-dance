@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
-from hambajuba2ba.audio.focus_config import get_base_stem
+from hambajuba2ba.config.slots import get_base_stem
 from hambajuba2ba.bridge.physics import (
     SteeringPhysics,
     BlendedPhysics,
@@ -22,7 +22,7 @@ from hambajuba2ba.bridge.physics import (
 )
 
 if TYPE_CHECKING:
-    from hambajuba2ba.audio.focus_config import BlockLinkConfig
+    from hambajuba2ba.config.slots import BlockLinkConfig
     from hambajuba2ba.audio import ComponentClassification, StemFeatures
 
 logger = logging.getLogger("uvicorn")

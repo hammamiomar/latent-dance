@@ -13,7 +13,7 @@ from typing import Dict, Literal, Optional, Tuple
 
 import torch
 
-from hambajuba2ba.audio.focus_config import DANCE_MODEL_DEFAULTS
+from hambajuba2ba.config.slots import DANCE_MODEL_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -91,25 +91,21 @@ def slerp_inplace(
 
 @dataclass
 class Destination:
-    """A point in the space to travel toward.
+    """A prompt-embedding point to travel toward.
 
-    Represents a meaningful destination in latent or embedding space.
-    Contains the actual tensor plus metadata for display/debugging.
-
-    For prompt space, SDXL requires both prompt_embeds and pooled_prompt_embeds.
-    Store both using tensor (main) and tensor_pooled (secondary).
+    SDXL needs both prompt_embeds and pooled_prompt_embeds; they ride as
+    tensor (main) and tensor_pooled (secondary). The WebSocket "latent"
+    destination space never reaches this class — it routes noise seeds to
+    CompositionEngine (see destination_handlers).
     """
 
-    tensor: torch.Tensor  # The actual embedding/latent (or prompt_embeds for prompt space)
-    label: str  # User-facing name ("album art", "seed 42", "cyberpunk")
+    tensor: torch.Tensor  # prompt_embeds
+    label: str  # User-facing name ("cyberpunk", "the red car...")
 
-    # For SDXL prompt space: stores pooled_prompt_embeds
+    # SDXL pooled_prompt_embeds
     tensor_pooled: Optional[torch.Tensor] = None
 
-    # For latent space destinations:
-    seed: Optional[int] = None
-
-    # For prompt space destinations:
+    # Source prompt text
     prompt: Optional[str] = None
 
 
@@ -188,17 +184,16 @@ def apply_intensity_curve(
 
 
 class DestinationModulator:
-    """SLERP-based modulation between two destinations.
+    """SLERP-based modulation between two prompt destinations.
 
-    Works identically for latent space and prompt embedding space.
     Supports two modes:
     - slider: User controls crossfader directly
     - reactive: Audio drives blend position via physics
 
     Usage:
         modulator = DestinationModulator(device, dtype, bpm=120, fps=60)
-        modulator.load_a(Destination(tensor=latent_a, label="Album Art"))
-        modulator.load_b(Destination(tensor=latent_b, label="Seed 42"))
+        modulator.load_a(Destination(tensor=embeds_a, tensor_pooled=pooled_a, label="calm forest"))
+        modulator.load_b(Destination(tensor=embeds_b, tensor_pooled=pooled_b, label="neon city"))
 
         # Slider mode
         modulator.set_blend(0.5)
@@ -254,7 +249,6 @@ class DestinationModulator:
 
         # Pre-allocated buffers for SLERP results (torch.compile compatibility)
         # These ensure same tensor address every frame, enabling CUDA graph optimization
-        self._result_buffer: Optional[torch.Tensor] = None  # For latent space
         self._embeds_buffer: Optional[torch.Tensor] = None  # For prompt embeds
         self._pooled_buffer: Optional[torch.Tensor] = None  # For pooled embeds
 
@@ -274,7 +268,6 @@ class DestinationModulator:
         """
         self.destination_a = dest
         self._ensure_buffer()
-        self._log_latent_stats("A", dest)
 
     def load_b(self, dest: Destination) -> None:
         """Load destination B.
@@ -284,19 +277,6 @@ class DestinationModulator:
         """
         self.destination_b = dest
         self._ensure_buffer()
-        self._log_latent_stats("B", dest)
-
-        if (
-            self.destination_a is not None
-            and self.destination_a.tensor_pooled is None
-            and self.destination_b.tensor_pooled is None
-        ):
-            try:
-                diff = (self.destination_b.tensor - self.destination_a.tensor).float()
-                diff_std = float(diff.std().item())
-                logger.info("Destination latents diff std=%.5f", diff_std)
-            except Exception:
-                logger.debug("Failed to compute latent diff stats", exc_info=True)
 
     def _ensure_buffer(self) -> None:
         """Ensure result buffers are allocated with correct shapes.
@@ -308,12 +288,7 @@ class DestinationModulator:
         if dest is None:
             return
 
-        # Main tensor buffer (latent or prompt_embeds)
-        if self._result_buffer is None:
-            self._result_buffer = torch.zeros_like(dest.tensor)
-
-        # SLERP intermediate buffers for main tensor (flat shape)
-        # Used by both latent space and prompt space
+        # SLERP intermediate buffers for prompt_embeds (flat shape)
         flat_size = dest.tensor.numel()
         if self._slerp_v0_norm is None:
             device, dtype = dest.tensor.device, dest.tensor.dtype
@@ -335,17 +310,6 @@ class DestinationModulator:
                 self._slerp_pooled_v0 = torch.zeros(pooled_flat, device=device, dtype=dtype)
                 self._slerp_pooled_v1 = torch.zeros(pooled_flat, device=device, dtype=dtype)
                 self._slerp_pooled_temp = torch.zeros(pooled_flat, device=device, dtype=dtype)
-
-    def _log_latent_stats(self, slot: str, dest: Destination) -> None:
-        if dest.tensor_pooled is not None:
-            return
-        try:
-            mean = float(dest.tensor.mean().item())
-            std = float(dest.tensor.std().item())
-            seed = dest.seed if dest.seed is not None else "n/a"
-            logger.info("Destination %s latent: seed=%s mean=%.4f std=%.4f", slot, seed, mean, std)
-        except Exception:
-            logger.debug("Failed to log latent stats", exc_info=True)
 
     def set_blend(self, position: float) -> None:
         """Set blend position (slider mode).
@@ -473,48 +437,6 @@ class DestinationModulator:
 
         blend = (output - left) / denom
         return max(0.0, min(1.0, blend))
-
-    def step(
-        self,
-        blend_position: Optional[float] = None,
-    ) -> torch.Tensor:
-        """Advance one frame, return blended result.
-
-        Args:
-            blend_position: Override blend position directly (for slider mode).
-                           If provided, sets blend_position and skips reactive logic.
-
-        Returns:
-            Blended tensor (reference to internal buffer - do not modify)
-
-        Raises:
-            ValueError: If destination A not loaded
-        """
-        if self.destination_a is None:
-            raise ValueError("Destination A not loaded")
-
-        # If only A is loaded, return A
-        if self.destination_b is None:
-            return self.destination_a.tensor
-
-        # Update blend position based on mode
-        if blend_position is not None:
-            # Direct override (slider mode from strategy)
-            self.blend_position = max(0.0, min(1.0, blend_position))
-        elif self.mode == "reactive":
-            # Reactive/global blend position is computed externally in strategy.
-            pass
-
-        # SLERP with pre-allocated buffers for torch.compile compatibility
-        return slerp_inplace(
-            self.destination_a.tensor,
-            self.destination_b.tensor,
-            self.blend_position,
-            out=self._result_buffer,
-            v0_norm_buf=self._slerp_v0_norm,
-            v1_norm_buf=self._slerp_v1_norm,
-            temp_buf=self._slerp_temp,
-        )
 
     def step_dual(
         self,
@@ -730,12 +652,7 @@ class DestinationModulator:
         old_pos = self.blend_position
 
         # Run full SLERP path (not edge case) to warm up kernels
-        if self.destination_a.tensor_pooled is not None:
-            # Prompt space: warmup step_dual
-            self.step_dual(blend_position=0.5)
-        else:
-            # Latent space: warmup step
-            self.step(blend_position=0.5)
+        self.step_dual(blend_position=0.5)
 
         # Restore position
         self.blend_position = old_pos

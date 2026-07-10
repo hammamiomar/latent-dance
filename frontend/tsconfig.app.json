@@ -25,5 +25,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests are typechecked by `bun run typecheck` (tsconfig.vitest.json).
+  // The production build must compile without the repo-root test fixtures,
+  // which don't exist inside the Docker image build context.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
 }

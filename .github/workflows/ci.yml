@@ -53,6 +53,7 @@ jobs:
           node-version: '20.19'
       - run: bun install --frozen-lockfile
       - run: bun run build
+      - run: bun run typecheck
       - run: bun run test:run
       - run: bun run lint
 

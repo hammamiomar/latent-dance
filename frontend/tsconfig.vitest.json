@@ -1,0 +1,12 @@
+{
+  // Full-surface typecheck: the app config PLUS test files and the vitest
+  // setup, which import golden fixtures from ../tests/fixtures (outside the
+  // Docker build context — hence excluded from the production build).
+  // Run via `bun run typecheck`; CI treats it as a required gate.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": []
+}

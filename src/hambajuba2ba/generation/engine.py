@@ -236,7 +236,6 @@ class SDXLTurboEngine:
         """
         # 1. Add noise (replicates scheduler.add_noise at highest sigma)
         #    sigma ≈ 14.6 → noise dominates ~95%, latent nudges composition.
-        #    See notes/cleanup_journal.md for implications on destination SLERP.
         noisy = latent + noise * self._sigma
 
         # 2. Scale for UNet input (replicates scheduler.scale_model_input)

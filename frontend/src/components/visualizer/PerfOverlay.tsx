@@ -3,26 +3,26 @@
  *
  * Extracted from Visualizer so each app shell can position it independently.
  * Browser mode: overlays the canvas. Desktop mode: renders in the face screen.
+ *
+ * Self-sufficient: backend stats come from usePerfStore (~2Hz, which is also
+ * the re-render tick), client-side counters from the render-free clientPerf
+ * object — sampled here at that same 2Hz.
  */
 
-import type { PerfStats } from "../../stores/usePerfStore";
+import { usePerfStore } from "../../stores/usePerfStore";
+import { clientPerf } from "../../lib/clientPerf";
 
-interface PerfOverlayProps {
-  fpsRef: React.RefObject<number>;
-  driftRef: React.RefObject<number>;
-  perfStats: PerfStats;
-}
-
-export function PerfOverlay({ fpsRef, driftRef, perfStats }: PerfOverlayProps) {
+export function PerfOverlay() {
+  const perfStats = usePerfStore((s) => s.stats);
   return (
     <div className="perf-overlay">
       <div className="perf-row">
         <span className="perf-label">WS FPS</span>
-        <span className="perf-value">{fpsRef.current.toFixed(1)}</span>
+        <span className="perf-value">{clientPerf.wsFps.toFixed(1)}</span>
       </div>
       <div className="perf-row">
         <span className="perf-label">Drift</span>
-        <span className="perf-value">{driftRef.current.toFixed(2)}s</span>
+        <span className="perf-value">{clientPerf.driftSec.toFixed(2)}s</span>
       </div>
       <div className="perf-row perf-gap" />
       <div className="perf-row">

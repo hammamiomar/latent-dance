@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useShallow } from "zustand/shallow";
 import { useAudioMixer } from "../hooks/useAudioMixer";
 import { useAudioUpload } from "../hooks/useAudioUpload";
 import { Win95Window, Win95Button, Win95Slider } from "./ui/Win95Window";
@@ -176,6 +177,9 @@ export function AudioPlayerWindow({
   // Audio Store (single source of truth)
   // ===========================================================================
 
+  // Narrow selector: the player renders currentTime (so it ticks with
+  // playback by design), but must not re-render on store fields it never
+  // shows (solo state, library ids, ...).
   const {
     audioId,
     filename,
@@ -196,7 +200,28 @@ export function AudioPlayerWindow({
     uploadPhase,
     uploadStatusLabel,
     uploadProgress,
-  } = useAudioStore();
+  } = useAudioStore(
+    useShallow((s) => ({
+      audioId: s.audioId,
+      filename: s.filename,
+      duration: s.duration,
+      currentTime: s.currentTime,
+      isPlaying: s.isPlaying,
+      stemVolumes: s.stemVolumes,
+      stemMuted: s.stemMuted,
+      masterVolume: s.masterVolume,
+      play: s.play,
+      pause: s.pause,
+      seek: s.seek,
+      setStemVolume: s.setStemVolume,
+      toggleStemMute: s.toggleStemMute,
+      setMasterVolume: s.setMasterVolume,
+      clearAudio: s.clearAudio,
+      uploadPhase: s.uploadPhase,
+      uploadStatusLabel: s.uploadStatusLabel,
+      uploadProgress: s.uploadProgress,
+    })),
+  );
 
   // ===========================================================================
   // Audio Mixer

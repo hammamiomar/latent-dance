@@ -1,7 +1,7 @@
 """Structural analysis for audio-reactive visualization.
 
-Implements §8 of the audio v2 spec: structural awareness features that
-drive SAE strength bursts, SLERP movement, and visual complexity.
+Structural awareness features that drive SAE strength bursts, SLERP
+movement, and visual complexity.
 
 Features:
 - Multi-timescale novelty: detect transients (short), phrases (medium), sections (long)
@@ -27,8 +27,8 @@ def compute_multi_timescale_novelty(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute novelty at three musically-meaningful timescales.
 
-    Per spec §8: Uses amplitude-normalized spectral flux with Gaussian smoothing
-    at different scales. This is the MIR-standard approach.
+    Uses amplitude-normalized spectral flux with Gaussian smoothing at
+    different scales — the MIR-standard approach.
 
     Timescales (BPM-scaled):
     - Short: ~0.5 second (transients, fills, ornaments) - for SAE bursts
@@ -232,7 +232,7 @@ def compute_structure_features(
                        novelty_short_deriv, novelty_medium_deriv,
                        layer_entry_mask
     """
-    # Multi-timescale novelty (flux-based per spec §8)
+    # Multi-timescale novelty (flux-based)
     novelty_short, novelty_medium, novelty_long = compute_multi_timescale_novelty(
         flux_normalized, fps, bpm
     )

@@ -47,4 +47,18 @@ start a remote shell service. Models and SAE artifacts download into
 | `api` | Starts `uvicorn app.main:app --host 0.0.0.0 --port 8000`. |
 | `shell` | Opens an interactive shell inside `/app`. |
 
+## Backend Selection
+
+`HAMBA_MODE` selects which generation backend the process serves (one model
+per process); the frontend renders whatever that backend's capability manifest
+declares:
+
+| `HAMBA_MODE` | Backend |
+|---|---|
+| `sae_steering` (default) | SDXL-Turbo + SAE steering — the real thing, needs a GPU (or MPS, slowly). |
+| `mock` | Six slots, synthetic frames, zero weights — instant boot for frontend work or trying the instrument without hardware. |
+
+Works the same in Docker (`docker run -e HAMBA_MODE=mock ...`) and from source
+(`HAMBA_MODE=mock uv run hambajuba`).
+
 Private GPU sync workflows are intentionally not part of the public Docker image.

@@ -17,7 +17,7 @@ import {
 } from "react";
 import { useAudioStore } from "../../stores/useAudioStore";
 import {
-  songIntelligenceActions,
+  useSongIntelligenceStore,
   type SongAnalysis,
   type SongProfile,
 } from "../../stores/useSongIntelligenceStore";
@@ -179,8 +179,8 @@ export function DataOverlay() {
         data.filename || songLabel(song),
         data.song_id,
       );
-      if (!songIntelligenceActions.hydrateFromPayload(data.audio_id, data)) {
-        songIntelligenceActions.clear();
+      if (!useSongIntelligenceStore.getState().hydrateFromPayload(data.audio_id, data)) {
+        useSongIntelligenceStore.getState().clear();
       }
       notify.success("Song activated.");
     } catch (err) {

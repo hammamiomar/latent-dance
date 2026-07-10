@@ -1,5 +1,4 @@
 import type {
-  BlockCode,
   IntensityCurve,
   IntensitySource,
   LinkTarget,
@@ -44,7 +43,8 @@ export type AgentBridgeMessage = AgentBridgeRequest | AgentBridgeResult | AgentB
 
 export interface AgentUpdateBlockConfigAction extends UpdateBlockConfigMessage {
   action: "update_block_config";
-  block: BlockCode;
+  // Slot name from the capability manifest (Hermes dialect keeps the field name `block`)
+  block: string;
   link_target?: LinkTarget;
   feature_label?: string;
   feature_id?: number;

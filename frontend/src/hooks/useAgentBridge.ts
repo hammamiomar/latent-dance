@@ -3,12 +3,14 @@ import { AGENT_BRIDGE_WS_URL, IS_DESKTOP_MODE } from "../constants";
 import { useAgentStore } from "../stores/useAgentStore";
 import { useAudioActivityStore } from "../stores/useAudioActivityStore";
 import { useAudioStore } from "../stores/useAudioStore";
-import { useBlockStore } from "../stores/useBlockStore";
+import { useSlotStore } from "../stores/useSlotStore";
 import { useCompositionStore } from "../stores/useCompositionStore";
+import { useSessionStore } from "../stores/useSessionStore";
 import { useDestinationStore } from "../stores/useDestinationStore";
 import { useSongIntelligenceStore } from "../stores/useSongIntelligenceStore";
+import { useConnectionStore } from "../stores/useConnectionStore";
 import { buildControlSurface } from "../data/controlSurface";
-import { applyAgentVisualAction, type AgentPlanApplySenders } from "../utils/agentPlanApply";
+import { applyAgentVisualAction } from "../utils/agentPlanApply";
 import { buildControlState } from "../utils/controlState";
 import { validateAgentVisualPlan } from "../utils/agentPlanValidation";
 import {
@@ -50,11 +52,6 @@ const WINDOW_RANKINGS = {
   bright_air: "brightness",
   sustain_body: "sustain",
 } as const;
-
-interface UseAgentBridgeOptions extends AgentPlanApplySenders {
-  generationStatus: ConnectionStatus;
-  isGenerating: boolean;
-}
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -320,7 +317,8 @@ function buildAutoDanceHints(
 
 function buildMusicWindow(lookback: number, lookahead: number) {
   const audio = useAudioStore.getState();
-  const blocks = useBlockStore.getState();
+  const slotState = useSlotStore.getState();
+  const session = useSessionStore.getState();
   const activity = useAudioActivityStore.getState();
   const intelligence = useSongIntelligenceStore.getState();
   const sampledAtAudioTime = audio.currentTime;
@@ -333,7 +331,7 @@ function buildMusicWindow(lookback: number, lookahead: number) {
     sampled_at_audio_time: sampledAtAudioTime,
     sampled_at_wall_time_ms: sampledAtWallTimeMs,
     duration: audio.duration || intelligence.profile?.duration || null,
-    bpm: intelligence.profile?.bpm ?? blocks.trackInfo?.bpm ?? null,
+    bpm: intelligence.profile?.bpm ?? session.trackInfo?.bpm ?? null,
     is_playing: audio.isPlaying,
     lookback,
     lookahead,
@@ -423,7 +421,7 @@ function buildMusicWindow(lookback: number, lookahead: number) {
     dominant_targets: buildDominantTargets(),
     stems: activity.stems,
     prominence: activity.prominence ?? {},
-    block_configs: blocks.blockMappings,
+    block_configs: slotState.slots,
   };
 }
 
@@ -440,11 +438,11 @@ function buildSongAnalysis() {
 type ControlStateSnapshot = ReturnType<typeof buildControlState>;
 
 function buildCurrentControlState(): ControlStateSnapshot {
-  const blocks = useBlockStore.getState();
   const destinations = useDestinationStore.getState();
   const composition = useCompositionStore.getState();
   return buildControlState({
-    blockMappings: blocks.blockMappings,
+    slots: useSlotStore.getState().slots,
+    capabilities: useSessionStore.getState().capabilities,
     latent: destinations.latent,
     prompt: destinations.prompt,
     composition,
@@ -550,16 +548,11 @@ function entryContextSignature(context: AgentEntryContext) {
   });
 }
 
-export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeController {
+export function useAgentBridge(): AgentBridgeController {
   const [status, setStatus] = useState<AgentBridgeStatus>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRef = useRef(new Map<string, PendingRequest>());
   const reconnectRef = useRef<number | null>(null);
-  const optionsRef = useRef(options);
-
-  useEffect(() => {
-    optionsRef.current = options;
-  }, [options]);
 
   const setBridgeStatus = useAgentStore((state) => state.setBridgeStatus);
   useEffect(() => {
@@ -604,27 +597,28 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
   const buildState = useCallback(() => {
     const agent = useAgentStore.getState();
     const audio = useAudioStore.getState();
-    const blocks = useBlockStore.getState();
+    const slotState = useSlotStore.getState();
     const destinations = useDestinationStore.getState();
     const composition = useCompositionStore.getState();
     const activity = useAudioActivityStore.getState();
     const songIntelligence = useSongIntelligenceStore.getState();
+    const connection = useConnectionStore.getState();
     const controlState = buildCurrentControlState();
     const entryContext = buildAgentEntryContext(
       controlState,
-      optionsRef.current.generationStatus,
-      optionsRef.current.isGenerating,
+      connection.status,
+      connection.isGenerating,
     );
     return {
       armed: agent.armed,
       mode: agent.mode,
-      active_session: optionsRef.current.isGenerating,
+      active_session: connection.isGenerating,
       entry_context: entryContext,
       latest_event: agent.latestEvent,
       event_log: agent.events,
       generation: {
-        status: optionsRef.current.generationStatus,
-        is_generating: optionsRef.current.isGenerating,
+        status: connection.status,
+        is_generating: connection.isGenerating,
       },
       audio: {
         audio_id: audio.audioId,
@@ -633,8 +627,8 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
         is_playing: audio.isPlaying,
         stems: audio.stems,
       },
-      track_info: blocks.trackInfo,
-      block_configs: blocks.blockMappings,
+      track_info: useSessionStore.getState().trackInfo,
+      block_configs: slotState.slots,
       control_state: controlState,
       destinations: {
         latent: destinations.latent,
@@ -660,15 +654,16 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
     assertObject(payload, "Visual plan");
     const agent = useAgentStore.getState();
     const audio = useAudioStore.getState();
-    const blocks = useBlockStore.getState();
+    const slotState = useSlotStore.getState();
     const validation = validateAgentVisualPlan(payload, {
       armed: agent.armed,
-      activeSession: optionsRef.current.isGenerating,
+      activeSession: useConnectionStore.getState().isGenerating,
+      slotNames: slotState.order,
       bridgeConnected: wsRef.current?.readyState === WebSocket.OPEN,
       currentAudioTime: audio.currentTime,
       mode: agent.mode,
       currentFeatureIdsByBlock: Object.fromEntries(
-        Object.entries(blocks.blockMappings).map(([block, mapping]) => [block, mapping.featureId]),
+        Object.entries(slotState.slots).map(([slot, mapping]) => [slot, mapping.featureId]),
       ),
     });
     if (!validation.ok) {
@@ -687,7 +682,7 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
       summary: plan.reason ?? undefined,
       feature_candidates: plan.feature_candidates ?? [],
     });
-    const changes = plan.actions.map((action) => applyAgentVisualAction(action, optionsRef.current));
+    const changes = plan.actions.map((action) => applyAgentVisualAction(action));
     agent.setPhase("watching", {
       provider: plan.provider ?? undefined,
       model: plan.model ?? undefined,
@@ -703,12 +698,12 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
       case "agent.get_state":
         return buildState();
       case "agent.get_control_surface":
-        return buildControlSurface();
+        return buildControlSurface(useSessionStore.getState().capabilities);
       case "agent.get_music_window": {
         const payload = (message.payload ?? {}) as { lookback?: number; lookahead?: number };
         return {
           ...buildMusicWindow(payload.lookback ?? 8, payload.lookahead ?? 16),
-          active_session: optionsRef.current.isGenerating,
+          active_session: useConnectionStore.getState().isGenerating,
         };
       }
       case "agent.get_song_analysis":
@@ -726,11 +721,12 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
         const payload = (message.payload ?? {}) as { armed?: boolean; mode?: string };
         const armed = Boolean(payload.armed);
         const mode = payload.mode === "dj" ? "dj" : "directive";
+        const connection = useConnectionStore.getState();
         const controlState = buildCurrentControlState();
         const entryContext = buildAgentEntryContext(
           controlState,
-          optionsRef.current.generationStatus,
-          optionsRef.current.isGenerating,
+          connection.status,
+          connection.isGenerating,
         );
         useAgentStore.getState().setArmed(
           armed,
@@ -774,10 +770,11 @@ export function useAgentBridge(options: UseAgentBridgeOptions): AgentBridgeContr
       const agent = useAgentStore.getState();
       if (!agent.armed) return;
 
+      const connection = useConnectionStore.getState();
       const entryContext = buildAgentEntryContext(
         buildCurrentControlState(),
-        optionsRef.current.generationStatus,
-        optionsRef.current.isGenerating,
+        connection.status,
+        connection.isGenerating,
       );
       const signature = entryContextSignature(entryContext);
       if (signature === lastSignature) return;

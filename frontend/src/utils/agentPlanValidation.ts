@@ -8,7 +8,6 @@ import type {
   ReplaceMode,
 } from "../types/destinations";
 import type {
-  BlockCode,
   IntensityCurve,
   IntensitySource,
   PositionSource,
@@ -18,7 +17,6 @@ import type {
 } from "../types/sae";
 import { ALL_LINK_TARGETS, VALID_RANKS } from "../types/sae";
 
-const BLOCK_CODES = ["down.2.1", "mid.0", "up.0.0", "up.0.1"] as const satisfies readonly BlockCode[];
 const DESTINATION_SPACES = ["latent", "prompt"] as const satisfies readonly DestinationSpace[];
 const DESTINATION_SLOTS = ["a", "b"] as const satisfies readonly DestinationSlot[];
 const DESTINATION_TYPES = ["seed", "prompt"] as const satisfies readonly DestinationType[];
@@ -42,6 +40,9 @@ const ACTION_TYPES = [
   "set_composition_config",
 ] as const;
 
+// Hermes drives the SAE backend only; these numeric bounds are part of the
+// frozen agent dialect. Slot names, by contrast, come from the capability
+// manifest via context.slotNames.
 const FEATURE_ID_MIN = 0;
 const FEATURE_ID_MAX = 5119;
 const STAGE_MIN = -50;
@@ -82,13 +83,15 @@ export type AgentPlanTimingProfile =
 export interface AgentPlanValidationContext {
   armed: boolean;
   activeSession: boolean;
+  /** Slot names from the capability manifest — the only valid `block` values. */
+  slotNames: readonly string[];
   bridgeConnected?: boolean;
   currentAudioTime?: number;
   mode?: AgentMode;
   djIntensity?: "calm" | "balanced" | "active";
   timingProfile?: AgentPlanTimingProfile;
-  knownFeatureIdsByBlock?: Partial<Record<BlockCode, readonly number[] | ReadonlySet<number>>>;
-  currentFeatureIdsByBlock?: Partial<Record<BlockCode, number | null | undefined>>;
+  knownFeatureIdsByBlock?: Partial<Record<string, readonly number[] | ReadonlySet<number>>>;
+  currentFeatureIdsByBlock?: Partial<Record<string, number | null | undefined>>;
 }
 
 export type AgentPlanValidationResult =
@@ -166,7 +169,7 @@ function validateTiming(
 function validateAction(
   value: unknown,
   path: string,
-  evidence: ReadonlyMap<BlockCode, ReadonlySet<number>>,
+  evidence: ReadonlyMap<string, ReadonlySet<number>>,
   context: AgentPlanValidationContext,
   errors: AgentPlanRejection[],
 ) {
@@ -181,7 +184,7 @@ function validateAction(
 
   switch (value.action) {
     case "update_block_config":
-      validateUpdateBlockConfig(value, path, evidence, errors);
+      validateUpdateBlockConfig(value, path, evidence, context, errors);
       break;
     case "set_destination":
       validateSetDestination(value, path, errors);
@@ -233,10 +236,11 @@ function validateAction(
 function validateUpdateBlockConfig(
   action: Record<string, unknown>,
   path: string,
-  evidence: ReadonlyMap<BlockCode, ReadonlySet<number>>,
+  evidence: ReadonlyMap<string, ReadonlySet<number>>,
+  context: AgentPlanValidationContext,
   errors: AgentPlanRejection[],
 ) {
-  if (!isOneOf(action.block, BLOCK_CODES)) {
+  if (typeof action.block !== "string" || !context.slotNames.includes(action.block)) {
     errors.push(error("invalid_block", `${path}.block`, "Unknown SAE block", action.block));
     return;
   }
@@ -348,9 +352,9 @@ function validateStageBounds(action: Record<string, unknown>, path: string, erro
 
 function validateFeatureId(
   value: unknown,
-  block: BlockCode,
+  block: string,
   path: string,
-  evidence: ReadonlyMap<BlockCode, ReadonlySet<number>>,
+  evidence: ReadonlyMap<string, ReadonlySet<number>>,
   errors: AgentPlanRejection[],
 ) {
   if (value == null) return;
@@ -436,24 +440,22 @@ function validateOptionalFinite(
 function collectFeatureEvidence(
   plan: Record<string, unknown>,
   context: AgentPlanValidationContext,
-): ReadonlyMap<BlockCode, ReadonlySet<number>> {
-  const evidence = new Map<BlockCode, Set<number>>();
-  const add = (block: BlockCode, featureId: number) => {
+): ReadonlyMap<string, ReadonlySet<number>> {
+  const evidence = new Map<string, Set<number>>();
+  const isKnownSlot = (block: unknown): block is string =>
+    typeof block === "string" && context.slotNames.includes(block);
+  const add = (block: string, featureId: number) => {
     if (!evidence.has(block)) evidence.set(block, new Set());
     evidence.get(block)?.add(featureId);
   };
 
   for (const [block, ids] of Object.entries(context.knownFeatureIdsByBlock ?? {})) {
-    if (!isOneOf(block, BLOCK_CODES) || ids == null) continue;
-    if (ids instanceof Set) {
-      ids.forEach((id) => add(block, id));
-    } else {
-      ids.forEach((id) => add(block, id));
-    }
+    if (!isKnownSlot(block) || ids == null) continue;
+    ids.forEach((id) => add(block, id));
   }
 
   for (const [block, featureId] of Object.entries(context.currentFeatureIdsByBlock ?? {})) {
-    if (isOneOf(block, BLOCK_CODES) && typeof featureId === "number" && Number.isInteger(featureId)) {
+    if (isKnownSlot(block) && typeof featureId === "number" && Number.isInteger(featureId)) {
       add(block, featureId);
     }
   }
@@ -463,7 +465,7 @@ function collectFeatureEvidence(
     if (!isRecord(candidate)) continue;
     const block = candidate.block;
     const id = candidate.id ?? candidate.feature_id;
-    if (isOneOf(block, BLOCK_CODES) && typeof id === "number" && Number.isInteger(id)) {
+    if (isKnownSlot(block) && typeof id === "number" && Number.isInteger(id)) {
       add(block, id);
     }
   }

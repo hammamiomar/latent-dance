@@ -288,29 +288,10 @@ function drawMouth(
 // =============================================================================
 
 /** Draw the complete face from a FaceState snapshot. */
-let _debugged = false;
 function drawFace(t: TM, state: FaceState) {
   const grid = t.grid;
   if (!grid) return;
   const { cols, rows } = grid;
-
-  if (!_debugged) {
-    _debugged = true;
-    console.log(
-      "[FaceRenderer] grid:",
-      cols,
-      "×",
-      rows,
-      "| EYE:",
-      EYE_W,
-      "×",
-      EYE_H,
-      "| sep:",
-      EYE_SEP,
-      "| MOUTH_W:",
-      MOUTH_W,
-    );
-  }
 
   // ---- Glitch: scatter random chars across entire grid ----
   if (state.glitch) {

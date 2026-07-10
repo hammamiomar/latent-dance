@@ -1,4 +1,4 @@
-"""Tests for the unified slot-config message (Phase 3).
+"""Tests for the unified slot-config message.
 
 UpdateSlotConfig is the one message every backend's slots ride;
 UpdateBlockConfig is its legacy alias (old action literal, `block` key
@@ -106,7 +106,7 @@ class TestSnapshot:
         )
         payload = snap.model_dump()
         assert payload["slot"] == "mid.0"
-        assert payload["block"] == "mid.0"  # legacy key until Phase 4
+        assert payload["block"] == "mid.0"  # legacy duplicate for pre-slot clients
 
 
 class TestShim:

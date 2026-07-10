@@ -16,7 +16,8 @@ import { CrystalHeartMesh } from "./CrystalHeart";
 import { FlowerOrbMesh } from "./FlowerOrb";
 import { useCanvasLightingStore } from "../stores/useCanvasLightingStore";
 import { useAudioActivityStore } from "../stores/useAudioActivityStore";
-import type { BlockCode, BlockMapping, LinkTarget, StemActivity } from "../types/sae";
+import { useTrackInfo } from "../stores/useSessionStore";
+import { useOrbRenderData, physicalStemOf, type OrbRenderData } from "../lib/orbRenderData";
 import type { Destination, DestinationMode, DestinationSpace } from "../types/destinations";
 import { FLOWER_COLORS } from "../data/flowerColors";
 
@@ -28,24 +29,17 @@ import { FLOWER_COLORS } from "../data/flowerColors";
 const HEART_ORTHO_SCALE = 48;
 const ORB_ORTHO_SCALE = 30;
 
-const BLOCK_ORDER: BlockCode[] = ["down.2.1", "mid.0", "up.0.0", "up.0.1"];
-
-const BLOCK_COLORS: Record<string, string> = {
-  "down.2.1": "#c45a2a",
+/**
+ * SAE mesh tint overrides — a deliberate aesthetic divergence from the
+ * manifest slot colors, tuned for the belly lighting: mid.0 renders warmer
+ * (magenta vs the manifest purple) and up.0.0 cooler (cyan vs pink) as 3D
+ * flowers. Labels, tendrils, and panels all use manifest colors; only the
+ * meshes diverge. Slots without an override use their manifest color.
+ */
+const MESH_TINT_OVERRIDES: Record<string, string> = {
   "mid.0": "#a84070",
   "up.0.0": "#4a9eb0",
-  "up.0.1": "#5a8a4a",
 };
-
-/** Map link target to physical stem for flower coloring */
-function linkTargetToFlowerStem(linkTarget: LinkTarget | undefined): "bass" | "drums" | "vocals" | "other" {
-  if (!linkTarget) return "other";
-  if (linkTarget.startsWith("drums")) return "drums";
-  if (linkTarget.startsWith("other")) return "other";
-  if (linkTarget.startsWith("bass")) return "bass";
-  if (linkTarget.startsWith("vocals")) return "vocals";
-  return "other";
-}
 
 // =============================================================================
 // Camera Controller — syncs orthographic camera to container size
@@ -210,15 +204,10 @@ interface SceneContentsProps {
   heartBody: Matter.Body;
   stemOrbBodies: Matter.Body[];
   destinationOrbBodies: Matter.Body[];
-  heartActivity: number;
-  heartBpm: number;
   heartIsDragging: boolean;
   heartIsHovered: boolean;
   heartIsPlayerOpen: boolean;
   heartIsReadyToGenerate: boolean;
-  blockMappings: Record<BlockCode, BlockMapping>;
-  stemActivity: StemActivity;
-  destinationActivity: number;
   destinationStates: {
     latent: { mode: DestinationMode; destinationA: Destination | null; destinationB: Destination | null };
     prompt: { mode: DestinationMode; destinationA: Destination | null; destinationB: Destination | null };
@@ -232,42 +221,33 @@ function SceneContents({
   heartBody,
   stemOrbBodies,
   destinationOrbBodies,
-  heartActivity,
-  heartBpm,
   heartIsDragging,
   heartIsHovered,
   heartIsPlayerOpen,
   heartIsReadyToGenerate,
-  blockMappings,
-  stemActivity,
-  destinationActivity,
   destinationStates,
   orbHoverStates,
 }: SceneContentsProps) {
-  // Compute per-orb data
-  const getOrbActivity = useCallback(
-    (block: BlockCode): number => {
-      const mapping = blockMappings[block];
-      if (!mapping) return 0;
-      const baseStem = linkTargetToFlowerStem(mapping.linkTarget);
-      const audioStems = useAudioActivityStore.getState().stems;
-      const extended = audioStems[baseStem]?.energy_smooth ?? 0;
-      const legacy = stemActivity[baseStem as keyof StemActivity] ?? 0;
-      return Math.max(extended, legacy as number);
-    },
-    [blockMappings, stemActivity]
-  );
+  // Telemetry tick: re-render the scene once per activity message (~10Hz
+  // during playback, silent when idle) so the getState-based per-orb
+  // activity/transient reads below stay fresh. This is the ONLY place the
+  // render tree ticks with the audio — the app root does not.
+  useAudioActivityStore((s) => s.lastUpdateTime);
+  const overallActivity = useAudioActivityStore((s) => s.overallActivity);
+  const heartBpm = useTrackInfo()?.bpm ?? 120;
+  // Slot identity + display metadata, index-aligned with stemOrbBodies.
+  const orbs = useOrbRenderData();
 
-  const getOrbTransient = useCallback(
-    (block: BlockCode): number => {
-      const mapping = blockMappings[block];
-      if (!mapping) return 0;
-      const audioStems = useAudioActivityStore.getState().stems;
-      const physicalStem = linkTargetToFlowerStem(mapping.linkTarget);
-      return audioStems[physicalStem]?.flash ?? 0;
-    },
-    [blockMappings]
-  );
+  // Compute per-orb data
+  const getOrbActivity = useCallback((orb: OrbRenderData): number => {
+    const audioStems = useAudioActivityStore.getState().stems;
+    return audioStems[physicalStemOf(orb.linkTarget)]?.energy_smooth ?? 0;
+  }, []);
+
+  const getOrbTransient = useCallback((orb: OrbRenderData): number => {
+    const audioStems = useAudioActivityStore.getState().stems;
+    return audioStems[physicalStemOf(orb.linkTarget)]?.flash ?? 0;
+  }, []);
 
   const getOverallTransient = useCallback((): number => {
     const audioStems = useAudioActivityStore.getState().stems;
@@ -280,8 +260,8 @@ function SceneContents({
   }, []);
 
   const getOrbColor = useCallback(
-    (block: BlockCode): { r: number; g: number; b: number } => {
-      const hex = BLOCK_COLORS[block] || "#888888";
+    (orb: OrbRenderData): { r: number; g: number; b: number } => {
+      const hex = MESH_TINT_OVERRIDES[orb.slot] ?? orb.color;
       return {
         r: parseInt(hex.slice(1, 3), 16) / 255,
         g: parseInt(hex.slice(3, 5), 16) / 255,
@@ -298,7 +278,7 @@ function SceneContents({
       {/* Crystal Heart */}
       <HeartInScene
         heartBody={heartBody}
-        activity={heartActivity}
+        activity={overallActivity}
         bpm={heartBpm}
         isDragging={heartIsDragging}
         isHovered={heartIsHovered}
@@ -306,22 +286,21 @@ function SceneContents({
         isReadyToGenerate={heartIsReadyToGenerate}
       />
 
-      {/* Stem Orbs */}
+      {/* Slot Orbs */}
       {stemOrbBodies.map((body, index) => {
-        const block = BLOCK_ORDER[index];
-        if (!block) return null;
-        const mapping = blockMappings[block];
+        const orb = orbs[index];
+        if (!orb) return null;
 
         return (
           <OrbInScene
-            key={block}
+            key={orb.slot}
             body={body}
-            color={getOrbColor(block)}
-            isBloomed={mapping?.enabled ?? false}
-            activity={getOrbActivity(block)}
-            transient={getOrbTransient(block)}
-            isHovered={orbHoverStates[block] ?? false}
-            stemKey={linkTargetToFlowerStem(mapping?.linkTarget)}
+            color={getOrbColor(orb)}
+            isBloomed={orb.enabled}
+            activity={getOrbActivity(orb)}
+            transient={getOrbTransient(orb)}
+            isHovered={orbHoverStates[orb.slot] ?? false}
+            stemKey={physicalStemOf(orb.linkTarget)}
           />
         );
       })}
@@ -340,7 +319,7 @@ function SceneContents({
             body={body}
             color={color}
             isBloomed={isConfigured}
-            activity={destinationActivity}
+            activity={overallActivity}
             transient={getOverallTransient()}
             isHovered={orbHoverStates[space] ?? false}
           />

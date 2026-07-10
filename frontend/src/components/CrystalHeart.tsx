@@ -28,8 +28,6 @@ interface CrystalHeartProps {
   body: Matter.Body;
   isDragging: boolean;
   onClick?: () => void;
-  /** Overall audio activity level (0-1), used for glow intensity */
-  activity?: number;
 }
 
 // ============================================================================
@@ -318,7 +316,6 @@ export function CrystalHeart({
   body,
   isDragging,
   onClick,
-  activity = 0,
 }: CrystalHeartProps) {
 
   // Imperative DOM refs — position updated by rAF, not React renders
@@ -326,7 +323,8 @@ export function CrystalHeart({
   const glowRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
 
-  // rAF loop: write left/top/glow imperatively (zero re-renders for physics)
+  // rAF loop: write left/top/glow imperatively (zero re-renders for physics
+  // OR audio — activity is read straight from the store each frame)
   useEffect(() => {
     const tick = () => {
       if (rootRef.current) {
@@ -334,6 +332,7 @@ export function CrystalHeart({
         rootRef.current.style.top = `${body.position.y - SIZE / 2}px`;
       }
       if (glowRef.current) {
+        const activity = useAudioActivityStore.getState().overallActivity;
         const vel = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
         const alpha = (0.12 + activity * 0.1 + vel * 0.02).toFixed(3);
         glowRef.current.style.background =
@@ -343,7 +342,7 @@ export function CrystalHeart({
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [body, activity]);
+  }, [body]);
 
   // Track mouse down position to differentiate click vs drag
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);

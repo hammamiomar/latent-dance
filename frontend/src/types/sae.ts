@@ -1,8 +1,8 @@
 /**
  * SAE Steering Types
  *
- * Type definitions for SAE feature steering and block-to-stem mapping.
- * Phase 1-2: Extended with spatial, channel, layer, and physics controls.
+ * Type definitions for SAE feature steering and block-to-stem mapping,
+ * including spatial, channel, layer, and physics controls.
  */
 
 /** Audio stem identifiers (4 physical + 5 virtual) */
@@ -121,9 +121,6 @@ export const RANK_DESCRIPTIONS: Record<1 | 2 | 3 | 4, string> = {
   4: 'Barely there - subtle texture',
 };
 
-/** UNet block identifiers */
-export type BlockCode = 'down.2.1' | 'mid.0' | 'up.0.0' | 'up.0.1';
-
 export type SpatialMode = 'draw' | 'pitch_aligned';
 
 /** Position source for dance model */
@@ -158,22 +155,16 @@ export interface FeatureOption {
   category: FeatureCategory;
 }
 
-/** UNet block metadata */
-export interface BlockInfo {
-  code: BlockCode;
-  name: string;
-  description: string;
-}
-
-/** Block configuration mapping (Dancer Ensemble architecture).
- * Uses LinkTarget instead of stem, StrengthRange instead of sensitivity,
- * and ranking for the Dancer Ensemble architecture.
+/** Configuration for one steering slot (Dancer Ensemble architecture).
+ * A slot is whatever the backend steers per unit — a UNet block for SAE,
+ * a concept slot for MF-RAE. Slot names come from the capability manifest;
+ * nothing in the frontend hardcodes them.
  *
  * Note: SLERP rankings are configured per-destination in ReactiveConfig,
- * not per-block. This keeps SAE steering separate from destination control.
+ * not per-slot. This keeps SAE steering separate from destination control.
  */
-export interface BlockMapping {
-  block: BlockCode;
+export interface SlotMapping {
+  slot: string;
   linkTarget: LinkTarget;
   featureId: number;
   featureLabel: string;
@@ -193,9 +184,12 @@ export interface BlockMapping {
   intensityGamma?: number;
 }
 
-/** Server snapshot for block config sync */
-export interface BlockConfigSnapshot {
-  block: BlockCode;
+/** Server snapshot for slot config sync — the fields we read from the
+ * `slot_configs` payload. (The backend also emits a legacy `block` key and a
+ * duplicate `block_configs` message for pre-Phase-4 clients; we type
+ * neither.) */
+export interface SlotConfigSnapshot {
+  slot: string;
   link_target: LinkTarget;
   strength_min: number;
   strength_max: number;
@@ -206,8 +200,6 @@ export interface BlockConfigSnapshot {
   sae_rank: Rank;
   spatial_mode: SpatialMode;
   spatial_mask?: number[];
-  stage_left?: number;
-  stage_right?: number;
   intensity_source?: IntensitySource;
   intensity_curve?: IntensityCurve;
   intensity_gamma?: number;
@@ -283,14 +275,14 @@ export interface ExtendedStemActivityMessage {
   stems: Record<AllStems, StemChannelData>;
   // Dancer Ensemble: computed prominence per stem (optional for backwards compat)
   prominence?: Record<string, StemProminence>;
-  // Block-level activity (optional; used for UI physics sync)
-  blocks?: Record<BlockCode, BlockActivityData>;
+  // Per-slot activity keyed by slot name (optional; used for UI physics sync)
+  blocks?: Record<string, BlockActivityData>;
 }
 
-/** Server message: Block config snapshot */
-export interface BlockConfigsMessage {
-  type: 'block_configs';
-  configs: Record<BlockCode, BlockConfigSnapshot>;
+/** Server message: slot config snapshot */
+export interface SlotConfigsMessage {
+  type: 'slot_configs';
+  configs: Record<string, SlotConfigSnapshot>;
 }
 
 /** Union type for all activity messages */
@@ -300,7 +292,29 @@ export type ActivityMessage = ExtendedStemActivityMessage;
 // WebSocket Message Types
 // =============================================================================
 
-/** WebSocket message: Update block config */
+/** WebSocket message: update one steering slot (the vocabulary the app's
+ * own controls send). */
+export interface UpdateSlotConfigMessage {
+  action: 'update_slot_config';
+  slot: string;
+  link_target?: LinkTarget;
+  strength_min?: number;
+  strength_max?: number;
+  stage_home?: number;
+  feature_id?: number;
+  enabled?: boolean;
+  auto_config?: boolean;
+  sae_rank?: Rank;
+  spatial_mode?: SpatialMode;
+  spatial_mask?: number[];
+  intensity_source?: IntensitySource;
+  intensity_curve?: IntensityCurve;
+  intensity_gamma?: number;
+}
+
+/** WebSocket message: legacy update_block_config — the frozen Hermes agent
+ * dialect. Only agentPlanApply forwards this; app controls send
+ * UpdateSlotConfigMessage. */
 export interface UpdateBlockConfigMessage {
   action: 'update_block_config';
   block: string;

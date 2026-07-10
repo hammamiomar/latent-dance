@@ -144,8 +144,8 @@ RankType = Literal[1, 2, 3, 4]
 class UpdateSlotConfig(BaseModel):
     """Update configuration for one steering slot (any backend).
 
-    The unified Phase 3 message: SAE blocks today, RA-SAE concept slots
-    and future backends tomorrow, all ride this shape. Backend-specific
+    One message shape for every backend: SAE blocks today, RA-SAE concept
+    slots and future backends tomorrow, all ride this. Backend-specific
     fields are optional; a backend ignores fields it doesn't declare in
     its capabilities manifest.
 
@@ -467,8 +467,9 @@ class DestinationStatus(BaseModel):
 class SlotConfigSnapshot(BaseModel):
     """Snapshot of one slot's configuration for UI sync.
 
-    Serialized with both `slot` and legacy `block` keys until the Phase 4
-    frontend reads `slot`.
+    Serialized with both `slot` and the legacy `block` key so pre-slot
+    clients keep working; the frontend reads `slot`. stage_home round-trips
+    the StrengthRangeSlider home handle.
     """
 
     slot: str
@@ -485,9 +486,7 @@ class SlotConfigSnapshot(BaseModel):
     channel: ChannelType
     layer: LayerType
     physics_preset: PhysicsPresetType
-    stage_left: Optional[float] = None
     stage_home: Optional[float] = None
-    stage_right: Optional[float] = None
     position_source: Optional[PositionSourceType] = None
     intensity_source: Optional[IntensitySourceType] = None
     position_smoothing_ms: Optional[float] = None
@@ -501,11 +500,16 @@ class SlotConfigSnapshot(BaseModel):
 BlockConfigSnapshot = SlotConfigSnapshot
 
 
-class BlockConfigs(BaseModel):
-    """Slot config snapshot for frontend state sync.
+class SlotConfigs(BaseModel):
+    """Slot config snapshots for frontend state sync."""
 
-    Wire type stays "block_configs" until the Phase 4 frontend switch.
-    """
+    type: Literal["slot_configs"] = "slot_configs"
+    configs: dict[str, SlotConfigSnapshot]
+
+
+class BlockConfigs(BaseModel):
+    """Legacy duplicate of SlotConfigs — emitted alongside it so pre-Phase-4
+    clients keep syncing during the wire migration window."""
 
     type: Literal["block_configs"] = "block_configs"
     configs: dict[str, SlotConfigSnapshot]

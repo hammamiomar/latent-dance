@@ -22,7 +22,14 @@ from pydantic import BaseModel
 
 from app.caching import CacheManager
 from app.generation import FrameItem
-from app.schemas import ExtendedStemActivity, SongIntelligenceMessage, TrackInfo
+from app.schemas import (
+    BlockConfigs,
+    ExtendedStemActivity,
+    SlotConfigs,
+    SlotConfigSnapshot,
+    SongIntelligenceMessage,
+    TrackInfo,
+)
 from hambajuba2ba.config.slots import BlockLinkConfig, get_base_stem
 from hambajuba2ba.audio.prominence import compute_all_prominences
 from hambajuba2ba.audio.sampler import AudioSampler
@@ -546,6 +553,50 @@ class GenerationStrategy(ABC):
             slot: replace(config, auto_config=False)
             for slot, config in self.slot_configs.items()
         }
+
+    def _serialize_slot_configs(self) -> Dict[str, SlotConfigSnapshot]:
+        """Serialize current slot configs for frontend sync (any backend)."""
+        payload: Dict[str, SlotConfigSnapshot] = {}
+        for slot, cfg in self._get_slot_configs().items():
+            physics_preset = cfg.physics_preset
+            if physics_preset == "default":
+                physics_preset = "ambient"
+            payload[slot] = SlotConfigSnapshot(
+                slot=cfg.block,
+                block=cfg.block,
+                link_target=cfg.link_target,
+                strength_min=cfg.strength_min,
+                strength_max=cfg.strength_max,
+                feature_id=cfg.feature_id,
+                enabled=cfg.enabled,
+                auto_config=cfg.auto_config,
+                sae_rank=cfg.sae_rank,
+                spatial_mode=cfg.spatial_mode,
+                spatial_mask=cfg.spatial_mask,
+                channel=cfg.channel,
+                layer=cfg.layer,
+                physics_preset=physics_preset,
+                stage_home=cfg.stage_home,
+                position_source=cfg.position_source,
+                intensity_source=cfg.intensity_source,
+                position_smoothing_ms=cfg.position_smoothing_ms,
+                silence_behavior=cfg.silence_behavior,
+                drift_ms=cfg.drift_ms,
+                intensity_curve=cfg.intensity_curve,
+                intensity_gamma=cfg.intensity_gamma,
+            )
+        return payload
+
+    async def _send_config_snapshots(self) -> None:
+        """Sync slot configs to the client.
+
+        Dual-emit: `slot_configs` is the vocabulary the frontend reads;
+        `block_configs` is the same payload under its legacy name for
+        clients that predate the slot vocabulary.
+        """
+        configs = self._serialize_slot_configs()
+        await self.websocket.send_json(SlotConfigs(configs=configs).model_dump())
+        await self.websocket.send_json(BlockConfigs(configs=configs).model_dump())
 
     def _compute_due_ts(self, now: float) -> float:
         """Return the next due_ts for frame pacing."""

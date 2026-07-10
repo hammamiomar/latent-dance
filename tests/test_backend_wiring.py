@@ -107,7 +107,7 @@ class TestDependencyTypes:
     """Tests for dependency injection return types."""
 
     def test_dependencies_have_no_backend_coupling(self):
-        """Phase 2: dependencies serve the active backend generically."""
+        """Dependencies serve the active backend generically."""
         from app import dependencies
         assert not hasattr(dependencies, "SAESteerablePipeline")
         assert hasattr(dependencies, "get_capabilities_ws")
@@ -128,7 +128,7 @@ class TestMainAppConfiguration:
     """
 
     def test_main_has_no_hardcoded_backend(self):
-        """Phase 2: main resolves the pipeline through the backend registry."""
+        """main resolves the pipeline through the backend registry."""
         with open("app/main.py") as f:
             content = f.read()
         assert "SAESteerablePipeline" not in content

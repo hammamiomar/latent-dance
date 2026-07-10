@@ -1,11 +1,13 @@
 /**
  * HelpDialog — Onboarding guide for hambajuba2ba.
  *
- * Explains the overall flow, audio stems, block config params,
+ * Explains the overall flow, audio stems, slot config params,
  * and scene controls. Open/close controlled by parent (ModeBar [?] button).
+ * The slot list comes from the capability manifest, like everything else.
  */
 
 import { useState } from "react";
+import { useCapabilities } from "../stores/useSessionStore";
 
 type Tab = "flow" | "stems" | "config" | "scenes";
 
@@ -182,18 +184,28 @@ function StemsTab() {
 }
 
 // =============================================================================
-// CONFIG TAB — Block config panel params
+// CONFIG TAB — Slot config panel params
 // =============================================================================
 
 function ConfigTab() {
+  const capabilities = useCapabilities();
   return (
     <div className="text-xs">
-      <Section title="UNet Blocks">
-        <p className="mb-1.5" style={{ color: "var(--color-text-dim)" }}>Which part of the image generation to steer</p>
-        <Item name="down.2.1" desc="Mood, scenes, composition — easiest to interpret" accent="var(--color-stem-bass)" />
-        <Item name="mid.0" desc="Abstract structure, spatial arrangement" accent="var(--color-stem-drums)" />
-        <Item name="up.0.0" desc="Local details: faces, objects, accessories" accent="var(--color-stem-vocals)" />
-        <Item name="up.0.1" desc="Style: textures, patterns, color palettes" accent="var(--color-stem-other)" />
+      <Section title="Steering Slots">
+        <p className="mb-1.5" style={{ color: "var(--color-text-dim)" }}>
+          Which part of the generation each orb steers — declared by the connected backend
+        </p>
+        {(capabilities?.slots ?? []).map((slot) => (
+          <Item
+            key={slot.name}
+            name={`${slot.display_name} (${slot.name})`}
+            desc={slot.description}
+            accent={slot.color}
+          />
+        ))}
+        {!capabilities && (
+          <p style={{ color: "var(--color-text-dim)" }}>Waiting for the backend manifest…</p>
+        )}
       </Section>
 
       <Section title="Intensity Source">

@@ -1,7 +1,7 @@
 /**
  * Shared option arrays for UI selectors.
  *
- * Single source of truth — used by BlockConfigPanel and ReactiveConfigSection.
+ * Single source of truth — used by SlotConfigPanel and ReactiveConfigSection.
  */
 
 import type {

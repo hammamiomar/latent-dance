@@ -1,8 +1,10 @@
 /**
- * OrbSystem - Block-centric orb management (like CrystalHeart).
+ * OrbSystem - Slot-centric orb management (like CrystalHeart).
  *
- * Phase 1-2: Each orb represents a UNet block (not a stem).
- * Orbs float freely with physics - same behavior as CrystalHeart.
+ * One orb per manifest steering slot; orbs float freely with physics —
+ * same behavior as CrystalHeart. Orb i renders useOrbRenderData()[i] and
+ * reads stemBodies[i]: the slot store's `order` is the only index↔slot
+ * mapping (see lib/orbRenderData.ts).
  *
  * Design: Neural nodes peering into the model's consciousness.
  * - Glassy, reflective orbs (control nodes)
@@ -12,37 +14,18 @@
 
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { FlowerStemType } from "./FlowerOrb";
-import { BlockConfigPanel } from "./steering/BlockConfigPanel";
+import { SlotConfigPanel } from "./steering/SlotConfigPanel";
 import { springs } from "../hooks/animations";
-import type {
-  BlockCode,
-  BlockMapping,
-  LinkTarget,
-  Rank,
-  SpatialMode,
-  StemActivity,
-  StrengthRange,
-  IntensitySource,
-  IntensityCurve,
-} from "../types/sae";
+import { useAudioActivityStore } from "../stores/useAudioActivityStore";
+import { useSlotStore } from "../stores/useSlotStore";
+import { useOrbRenderData, physicalStemOf, type OrbRenderData } from "../lib/orbRenderData";
 import type {
   Destination,
   DestinationMode,
   DestinationSpace,
 } from "../types/destinations";
-import { BLOCKS, BLOCK_COLORS, STEM_COLORS } from "../data/features";
+import { STEM_COLORS } from "../data/features";
 import type Matter from "matter-js";
-
-/** Map link targets to physical stems for flower type */
-function linkTargetToFlowerType(linkTarget: LinkTarget | undefined): FlowerStemType {
-  if (!linkTarget) return 'other';
-  if (linkTarget.startsWith('drums')) return 'drums';
-  if (linkTarget.startsWith('other')) return 'other';
-  if (linkTarget.startsWith('bass')) return 'bass';
-  if (linkTarget.startsWith('vocals')) return 'vocals';
-  return 'other';
-}
 
 // =============================================================================
 // GRID CONFIGURATION
@@ -51,17 +34,6 @@ function linkTargetToFlowerType(linkTarget: LinkTarget | undefined): FlowerStemT
 const GRID_COLS = 6;
 const GRID_ROWS = 6;
 const GRID_PADDING = 80; // Padding from viewport edges
-
-/** Block codes in orb order */
-const BLOCK_ORDER: BlockCode[] = ["down.2.1", "mid.0", "up.0.0", "up.0.1"];
-
-/** Default grid positions for each block (col, row) - corners, crystal heart in center */
-const DEFAULT_GRID_POSITIONS: Record<BlockCode, { col: number; row: number }> = {
-  "down.2.1": { col: 0, row: 0 }, // Composition - top left
-  "mid.0": { col: 5, row: 0 },    // Abstract - top right
-  "up.0.0": { col: 0, row: 5 },   // Details - bottom left
-  "up.0.1": { col: 5, row: 5 },   // Style - bottom right
-};
 
 // =============================================================================
 // TYPES
@@ -73,28 +45,9 @@ interface OrbSystemProps {
   destinationBodies: Matter.Body[];
   /** Check if a body is currently being dragged */
   isDragging: (body: Matter.Body) => boolean;
-  /** Real-time stem activity levels */
-  stemActivity: StemActivity;
-  /** Block-centric mappings */
-  blockMappings: Record<BlockCode, BlockMapping>;
   /** Container dimensions for grid calculation */
   containerSize?: { width: number; height: number };
-  /** Computed prominence per stem (from backend telemetry) */
-  stemProminence?: Record<string, { prominence: number; surprise_active: boolean }>;
-  // === Block Config Callbacks ===
-  onLinkTargetChange: (block: BlockCode, linkTarget: LinkTarget) => void;
-  onFeatureChange: (block: BlockCode, featureId: number, featureLabel: string) => void;
-  onStrengthRangeChange: (block: BlockCode, range: StrengthRange) => void;
-  onAutoConfigChange: (block: BlockCode, autoConfig: boolean) => void;
-  onSpatialModeChange: (block: BlockCode, spatialMode: SpatialMode) => void;
-  onSpatialMaskChange: (block: BlockCode, mask: number[]) => void;
-  onIntensitySourceChange: (block: BlockCode, source: IntensitySource) => void;
-  onIntensityCurveChange: (block: BlockCode, curve: IntensityCurve) => void;
-  onIntensityGammaChange: (block: BlockCode, gamma: number) => void;
-  onSaeRankChange: (block: BlockCode, rank: Rank) => void;
-  onToggleBlock: (block: BlockCode) => void;
   // === Destination Orbs ===
-  destinationActivity: number;
   destinationStates: {
     latent: {
       mode: DestinationMode;
@@ -153,27 +106,21 @@ export function OrbSystem({
   stemBodies,
   destinationBodies,
   isDragging,
-  stemActivity: _stemActivity,
-  blockMappings,
   containerSize,
-  stemProminence,
-  onLinkTargetChange,
-  onFeatureChange,
-  onStrengthRangeChange,
-  onAutoConfigChange,
-  onSpatialModeChange,
-  onSpatialMaskChange,
-  onIntensitySourceChange,
-  onIntensityCurveChange,
-  onIntensityGammaChange,
-  onSaeRankChange,
-  onToggleBlock,
-  destinationActivity,
   destinationStates,
   onDestinationClick,
 }: OrbSystemProps) {
+  // Slot identity + display metadata, index-aligned with stemBodies.
+  const orbs = useOrbRenderData();
+  const slots = useSlotStore((s) => s.slots);
+  // Narrow audio subscriptions: prominence drives the per-orb glow and is a
+  // fresh object per telemetry message (~10Hz during playback), so THIS
+  // component re-renders with the music — the tree above it does not.
+  const stemProminence = useAudioActivityStore((s) => s.prominence);
+  const destinationActivity = useAudioActivityStore((s) => s.overallActivity);
   // Imperative position updates — no React re-renders for physics movement.
-  // Refs for each orb div, keyed by block code or destination space.
+  // Refs keyed by body index (slot orbs) or destination space — index keys
+  // stay stable across slot-store changes, so the rAF loop never re-binds.
   const orbDivRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafRef = useRef(0);
 
@@ -185,11 +132,9 @@ export function OrbSystem({
   // rAF loop: write left/top directly to DOM (like useArmAnimation pattern)
   useEffect(() => {
     const tick = () => {
-      // Stem orbs
+      // Slot orbs
       for (let i = 0; i < stemBodies.length; i++) {
-        const block = BLOCK_ORDER[i];
-        if (!block) continue;
-        const el = orbDivRefs.current.get(block);
+        const el = orbDivRefs.current.get(`slot-${i}`);
         if (!el) continue;
         el.style.left = `${stemBodies[i].position.x - ORB_SIZE / 2}px`;
         el.style.top = `${stemBodies[i].position.y - ORB_SIZE / 2}px`;
@@ -208,19 +153,8 @@ export function OrbSystem({
     return () => cancelAnimationFrame(rafRef.current);
   }, [stemBodies, destinationBodies]);
 
-  // Orb state - phase offsets for animation variety
-  const orbStates = useMemo(
-    () =>
-      BLOCK_ORDER.map((block, i) => ({
-        block,
-        gridPos: DEFAULT_GRID_POSITIONS[block],
-        phase: i * 0.25 + Math.random() * 0.1,
-      })),
-    []
-  );
-
   // Selected orb for config panel
-  const [selectedBlock, setSelectedBlock] = useState<BlockCode | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
 
   // Click vs drag detection - track mouse down position (like CrystalHeart)
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -234,23 +168,20 @@ export function OrbSystem({
   );
 
   // Handle orb click
-  const handleOrbClick = useCallback((block: BlockCode) => {
-    setSelectedBlock((prev) => (prev === block ? null : block));
+  const handleOrbClick = useCallback((slot: string) => {
+    setSelectedSlot((prev) => (prev === slot ? null : slot));
   }, []);
 
   // Close config panel
   const handleClosePanel = useCallback(() => {
-    setSelectedBlock(null);
+    setSelectedSlot(null);
   }, []);
 
-  // Get prominence for a block (from backend telemetry or derive from rank)
-  const getBlockProminence = useCallback(
-    (block: BlockCode): { prominence: number; surprise: boolean } => {
-      const mapping = blockMappings[block];
-      if (!mapping) return { prominence: 0, surprise: false };
-
+  // Get prominence for an orb (from backend telemetry or derive from rank)
+  const getOrbProminence = useCallback(
+    (orb: OrbRenderData): { prominence: number; surprise: boolean } => {
       // Try to get from backend telemetry
-      const baseStem = linkTargetToFlowerType(mapping.linkTarget);
+      const baseStem = physicalStemOf(orb.linkTarget);
       if (stemProminence && stemProminence[baseStem]) {
         return {
           prominence: stemProminence[baseStem].prominence,
@@ -266,20 +197,22 @@ export function OrbSystem({
         4: 0.25,
         null: 0.05,
       };
-      const rankKey = mapping.saeRank === null ? 'null' : mapping.saeRank;
+      const rankKey = orb.saeRank === null ? 'null' : orb.saeRank;
       return {
         prominence: rankToProminence[rankKey] ?? 0.5,
         surprise: false,
       };
     },
-    [blockMappings, stemProminence]
+    [stemProminence]
   );
 
   // Read selected orb's body ref directly — position is live (mutated by Matter.js).
-  // No memo needed: BlockConfigPanel reads this once on mount to compute initial placement.
-  const selectedOrbBody = selectedBlock !== null
-    ? stemBodies[BLOCK_ORDER.indexOf(selectedBlock)]
-    : undefined;
+  // No memo needed: SlotConfigPanel reads this once on mount to compute initial placement.
+  const selectedIndex = selectedSlot !== null
+    ? orbs.findIndex((orb) => orb.slot === selectedSlot)
+    : -1;
+  const selectedOrb = selectedIndex >= 0 ? orbs[selectedIndex] : undefined;
+  const selectedOrbBody = selectedIndex >= 0 ? stemBodies[selectedIndex] : undefined;
   const selectedOrbPosition = selectedOrbBody
     ? { x: selectedOrbBody.position.x, y: selectedOrbBody.position.y }
     : undefined;
@@ -294,25 +227,20 @@ export function OrbSystem({
 
       {/* Orbs */}
       {stemBodies.map((body, index) => {
-        const orbState = orbStates[index];
-        if (!orbState) return null;
+        const orb = orbs[index];
+        if (!orb) return null;
 
-        const block = orbState.block;
-        const mapping = blockMappings[block];
         const isBeingDragged = isDragging(body);
-        const isSelected = selectedBlock === block;
-
-        const blockColor = BLOCK_COLORS[block];
-        const baseStem = mapping ? linkTargetToFlowerType(mapping.linkTarget) : 'other';
-        const stemColor = STEM_COLORS[baseStem] || "#888";
+        const isSelected = selectedSlot === orb.slot;
+        const stemColor = STEM_COLORS[physicalStemOf(orb.linkTarget)] || "#888";
 
         // Get prominence for glow effect
-        const { prominence, surprise } = getBlockProminence(block);
+        const { prominence, surprise } = getOrbProminence(orb);
 
         return (
           <div
-            key={block}
-            ref={setOrbRef(block)}
+            key={orb.slot}
+            ref={setOrbRef(`slot-${index}`)}
             className="block-orb-wrapper"
             style={{
               position: "absolute",
@@ -326,12 +254,12 @@ export function OrbSystem({
               // Prominence-based glow: more prominent = stronger glow
               filter: isBeingDragged
                 ? "drop-shadow(0 8px 24px rgba(0,0,0,0.4))"
-                : mapping?.enabled
-                  ? `drop-shadow(0 0 ${8 + prominence * 20}px ${blockColor}${Math.round(prominence * 80 + 20).toString(16).padStart(2, '0')}) drop-shadow(0 4px 12px rgba(0,0,0,0.2))`
+                : orb.enabled
+                  ? `drop-shadow(0 0 ${8 + prominence * 20}px ${orb.color}${Math.round(prominence * 80 + 20).toString(16).padStart(2, '0')}) drop-shadow(0 4px 12px rgba(0,0,0,0.2))`
                   : "drop-shadow(0 4px 12px rgba(0,0,0,0.2))",
               transition: "transform 0.15s ease, filter 0.3s ease",
             }}
-            data-block={block}
+            data-slot={orb.slot}
             data-prominence={prominence.toFixed(2)}
             data-surprise={surprise}
             // Click detection like CrystalHeart - simple mouseDown/mouseUp
@@ -348,7 +276,7 @@ export function OrbSystem({
 
               // If moved less than 5 pixels, treat as click
               if (distance < 5) {
-                handleOrbClick(block);
+                handleOrbClick(orb.slot);
               }
 
               mouseDownPosRef.current = null;
@@ -356,7 +284,7 @@ export function OrbSystem({
           >
             {/* 3D mesh now rendered in shared BellyScene Canvas */}
 
-            {/* Block Label (below orb) */}
+            {/* Slot Label (below orb) */}
             <div
               className="orb-label"
               style={{
@@ -378,42 +306,40 @@ export function OrbSystem({
                   fontWeight: 700,
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
-                  color: blockColor,
-                  textShadow: `0 0 10px ${blockColor}50, 0 1px 2px rgba(0,0,0,0.9)`,
+                  color: orb.color,
+                  textShadow: `0 0 10px ${orb.color}50, 0 1px 2px rgba(0,0,0,0.9)`,
                 }}
               >
-                {BLOCKS[block].name}
+                {orb.displayName}
               </span>
-              {/* Block code (subtle) */}
+              {/* Slot name (subtle) */}
               <span
                 style={{
                   fontSize: "7px",
                   fontWeight: 500,
                   fontFamily: "monospace",
                   letterSpacing: "0.05em",
-                  color: blockColor,
+                  color: orb.color,
                   opacity: 0.5,
                   textShadow: "0 1px 2px rgba(0,0,0,0.8)",
                 }}
               >
-                {block}
+                {orb.slot}
               </span>
               {/* Link target indicator */}
-              {mapping && (
-                <span
-                  style={{
-                    fontSize: "7px",
-                    fontWeight: 500,
-                    letterSpacing: "0.08em",
-                    color: stemColor,
-                    opacity: mapping.enabled ? 0.8 : 0.4,
-                    textTransform: "uppercase",
-                    textShadow: "0 1px 2px rgba(0,0,0,0.8)",
-                  }}
-                >
-                  {mapping.linkTarget.replace("_", " ")}
-                </span>
-              )}
+              <span
+                style={{
+                  fontSize: "7px",
+                  fontWeight: 500,
+                  letterSpacing: "0.08em",
+                  color: stemColor,
+                  opacity: orb.enabled ? 0.8 : 0.4,
+                  textTransform: "uppercase",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.8)",
+                }}
+              >
+                {orb.linkTarget.replace("_", " ")}
+              </span>
             </div>
 
           </div>
@@ -512,25 +438,17 @@ export function OrbSystem({
         );
       })}
 
-      {/* Block Config Panel */}
+      {/* Slot Config Panel */}
       <AnimatePresence>
-        {selectedBlock && blockMappings[selectedBlock] && (
-          <BlockConfigPanel
-            block={selectedBlock}
-            mapping={blockMappings[selectedBlock]}
+        {selectedSlot && selectedOrb && slots[selectedSlot] && (
+          <SlotConfigPanel
+            slot={selectedSlot}
+            mapping={slots[selectedSlot]}
+            displayName={selectedOrb.displayName}
+            description={selectedOrb.description}
+            accentColor={selectedOrb.color}
             isOpen={true}
             onClose={handleClosePanel}
-            onLinkTargetChange={onLinkTargetChange}
-            onFeatureChange={onFeatureChange}
-            onStrengthRangeChange={onStrengthRangeChange}
-            onAutoConfigChange={onAutoConfigChange}
-            onSpatialModeChange={onSpatialModeChange}
-            onSpatialMaskChange={onSpatialMaskChange}
-            onIntensitySourceChange={onIntensitySourceChange}
-            onIntensityCurveChange={onIntensityCurveChange}
-            onIntensityGammaChange={onIntensityGammaChange}
-            onSaeRankChange={onSaeRankChange}
-            onToggle={onToggleBlock}
             orbPosition={selectedOrbPosition}
             containerSize={containerSize}
           />
@@ -632,24 +550,3 @@ function GridOverlay({ grid, activeOrbs }: GridOverlayProps) {
     </motion.div>
   );
 }
-
-// =============================================================================
-// CSS STYLES (add to global CSS)
-// =============================================================================
-
-/*
-Add these styles to your global CSS:
-
-.block-orb-wrapper {
-  transition: filter 0.2s ease;
-}
-
-.block-orb-wrapper:hover {
-  filter: drop-shadow(0 6px 20px rgba(0,0,0,0.3)) !important;
-}
-
-.orb-label {
-  user-select: none;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-}
-*/

@@ -1,5 +1,12 @@
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { __resetTransport } from '../lib/transport';
+
+// The transport is a module singleton — never let an attached fake socket
+// leak between tests.
+afterEach(() => {
+  __resetTransport();
+});
 
 // Mock Web Audio API
 class MockAudioContext {

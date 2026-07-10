@@ -1,54 +1,26 @@
 import { getFeature } from "../data/featureLoader";
-import { blockActions, useBlockStore } from "../stores/useBlockStore";
+import { useSlotStore } from "../stores/useSlotStore";
 import { useCompositionStore } from "../stores/useCompositionStore";
 import { useDestinationStore } from "../stores/useDestinationStore";
+import {
+  sendClearDestination,
+  sendFreezeBlend,
+  sendSetBlendPosition,
+  sendSetCompositionConfig,
+  sendSetDestination,
+  sendSetDestinationLink,
+  sendSetDestinationMode,
+  sendSetReactiveConfig,
+  sendUpdateBlockConfig,
+} from "../lib/wire";
 import type {
-  AgentClearDestinationAction,
-  AgentFreezeBlendAction,
-  AgentSetBlendPositionAction,
-  AgentSetCompositionConfigAction,
   AgentSetDestinationAction,
-  AgentSetDestinationLinkAction,
-  AgentSetDestinationModeAction,
   AgentSetReactiveConfigAction,
   AgentUpdateBlockConfigAction,
   AgentVisualAction,
 } from "../types/agentBridge";
 import type { Destination, ReactiveConfig } from "../types/destinations";
-import type { StrengthRange, UpdateBlockConfigMessage } from "../types/sae";
-
-export interface AgentPlanApplySenders {
-  sendUpdateBlockConfig: (message: UpdateBlockConfigMessage) => void;
-  sendSetDestination: (
-    space: AgentSetDestinationAction["space"],
-    slot: AgentSetDestinationAction["slot"],
-    destinationType: AgentSetDestinationAction["destination_type"],
-    value: { seed?: number; prompt?: string },
-    replaceMode?: AgentSetDestinationAction["replace_mode"],
-  ) => void;
-  sendClearDestination: (
-    space: AgentClearDestinationAction["space"],
-    slot: AgentClearDestinationAction["slot"],
-  ) => void;
-  sendFreezeBlend: (
-    space: AgentFreezeBlendAction["space"],
-    targetSlot: AgentFreezeBlendAction["target_slot"],
-  ) => void;
-  sendSetBlendPosition: (space: AgentSetBlendPositionAction["space"], position: number) => void;
-  sendSetDestinationMode: (
-    space: AgentSetDestinationModeAction["space"],
-    mode: AgentSetDestinationModeAction["mode"],
-  ) => void;
-  sendSetReactiveConfig: (
-    space: AgentSetReactiveConfigAction["space"],
-    config: Partial<ReactiveConfig>,
-  ) => void;
-  sendSetDestinationLink: (
-    space: AgentSetDestinationLinkAction["space"],
-    linkTarget: AgentSetDestinationLinkAction["link_target"],
-  ) => void;
-  sendSetCompositionConfig: (config: Omit<AgentSetCompositionConfigAction, "action">) => void;
-}
+import type { StrengthRange } from "../types/sae";
 
 export interface AgentPlanChangeSummary extends Record<string, unknown> {
   action: string;
@@ -92,35 +64,33 @@ function summary(action: AgentVisualAction, target: string): AgentPlanChangeSumm
   };
 }
 
-function applyBlockConfig(
-  action: AgentUpdateBlockConfigAction,
-  senders: AgentPlanApplySenders,
-): AgentPlanChangeSummary {
-  const state = useBlockStore.getState();
-  const current = state.blockMappings[action.block];
+function applyBlockConfig(action: AgentUpdateBlockConfigAction): AgentPlanChangeSummary {
+  const store = useSlotStore.getState();
+  const current = store.slots[action.block];
   if (!current) throw agentApplyError(`Unknown block: ${action.block}`);
 
   if (action.feature_id != null) {
+    // Frozen Hermes dialect bound: the agent drives the SAE backend only.
     if (action.feature_id < 0 || action.feature_id > 5119) {
       throw agentApplyError(`Feature id out of range: ${action.feature_id}`);
     }
     const label = action.feature_label
       ?? getFeature(action.block, action.feature_id)?.label
       ?? `#${action.feature_id}`;
-    blockActions.setBlockFeature(action.block, action.feature_id, label);
+    store.setSlotFeature(action.block, action.feature_id, label);
   }
-  if (action.link_target) blockActions.setBlockLinkTarget(action.block, action.link_target);
-  if (action.enabled != null) blockActions.setBlockEnabled(action.block, action.enabled);
-  if (action.auto_config != null) blockActions.setBlockAutoConfig(action.block, action.auto_config);
-  if ("sae_rank" in action) blockActions.setBlockSaeRank(action.block, action.sae_rank ?? null);
-  if (action.spatial_mode) blockActions.setBlockSpatialMode(action.block, action.spatial_mode);
+  if (action.link_target) store.setSlotLinkTarget(action.block, action.link_target);
+  if (action.enabled != null) store.setSlotEnabled(action.block, action.enabled);
+  if (action.auto_config != null) store.setSlotAutoConfig(action.block, action.auto_config);
+  if ("sae_rank" in action) store.setSlotSaeRank(action.block, action.sae_rank ?? null);
+  if (action.spatial_mode) store.setSlotSpatialMode(action.block, action.spatial_mode);
   if (action.spatial_mask) {
     if (action.spatial_mask.length !== 256) throw agentApplyError("spatial_mask must contain 256 values");
-    blockActions.setBlockSpatialMask(action.block, action.spatial_mask);
+    store.setSlotSpatialMask(action.block, action.spatial_mask);
   }
-  if (action.intensity_source) blockActions.setBlockIntensitySource(action.block, action.intensity_source);
-  if (action.intensity_curve) blockActions.setBlockIntensityCurve(action.block, action.intensity_curve);
-  if (action.intensity_gamma != null) blockActions.setBlockIntensityGamma(action.block, action.intensity_gamma);
+  if (action.intensity_source) store.setSlotIntensitySource(action.block, action.intensity_source);
+  if (action.intensity_curve) store.setSlotIntensityCurve(action.block, action.intensity_curve);
+  if (action.intensity_gamma != null) store.setSlotIntensityGamma(action.block, action.intensity_gamma);
 
   if (
     action.strength_min != null ||
@@ -134,17 +104,14 @@ function applyBlockConfig(
       strengthMax: action.stage_right ?? action.strength_max ?? current.strengthRange.strengthMax,
       stageHome: action.stage_home ?? current.strengthRange.stageHome,
     };
-    blockActions.setBlockStrengthRange(action.block, range);
+    store.setSlotStrengthRange(action.block, range);
   }
 
-  senders.sendUpdateBlockConfig(action);
+  sendUpdateBlockConfig(action);
   return summary(action, action.block);
 }
 
-function applyDestination(
-  action: AgentSetDestinationAction,
-  senders: AgentPlanApplySenders,
-): AgentPlanChangeSummary {
+function applyDestination(action: AgentSetDestinationAction): AgentPlanChangeSummary {
   const value = { seed: action.seed, prompt: action.prompt };
   const destination: Destination = {
     type: action.destination_type,
@@ -152,7 +119,7 @@ function applyDestination(
     ...value,
   };
   useDestinationStore.getState().setDestination(action.space, action.slot, destination);
-  senders.sendSetDestination(
+  sendSetDestination(
     action.space,
     action.slot,
     action.destination_type,
@@ -162,47 +129,44 @@ function applyDestination(
   return summary(action, `${action.space}:${action.slot}`);
 }
 
-export function applyAgentVisualAction(
-  action: AgentVisualAction,
-  senders: AgentPlanApplySenders,
-): AgentPlanChangeSummary {
+export function applyAgentVisualAction(action: AgentVisualAction): AgentPlanChangeSummary {
   switch (action.action) {
     case "update_block_config":
-      return applyBlockConfig(action, senders);
+      return applyBlockConfig(action);
     case "set_destination":
-      return applyDestination(action, senders);
+      return applyDestination(action);
     case "clear_destination":
       useDestinationStore.getState().clearDestination(action.space, action.slot);
-      senders.sendClearDestination(action.space, action.slot);
+      sendClearDestination(action.space, action.slot);
       return summary(action, `${action.space}:${action.slot}`);
     case "freeze_blend":
-      senders.sendFreezeBlend(action.space, action.target_slot);
+      sendFreezeBlend(action.space, action.target_slot);
       return summary(action, `${action.space}:${action.target_slot}`);
     case "set_destination_mode":
       if (action.mode === "linked") throw agentApplyError("Use set_destination_link for linked mode");
       useDestinationStore.getState().setMode(action.space, action.mode);
-      senders.sendSetDestinationMode(action.space, action.mode);
+      sendSetDestinationMode(action.space, action.mode);
       return summary(action, action.space);
     case "set_destination_link":
       useDestinationStore.getState().setLinkTarget(action.space, action.link_target);
-      senders.sendSetDestinationLink(action.space, action.link_target);
+      sendSetDestinationLink(action.space, action.link_target);
       return summary(action, action.space);
     case "set_reactive_config": {
       const config = reactiveConfigFromAction(action);
       useDestinationStore.getState().setReactiveConfig(action.space, config);
-      senders.sendSetReactiveConfig(action.space, config);
+      sendSetReactiveConfig(action.space, config);
       return summary(action, action.space);
     }
     case "set_blend_position":
       useDestinationStore.getState().setBlendPosition(action.space, action.position);
-      senders.sendSetBlendPosition(action.space, action.position);
+      sendSetBlendPosition(action.space, action.position);
       return summary(action, action.space);
     case "set_composition_config":
       useCompositionStore.getState().setConfig({
         distance: action.distance,
         mode: action.mode,
       });
-      senders.sendSetCompositionConfig({
+      sendSetCompositionConfig({
         distance: action.distance,
         mode: action.mode,
       });

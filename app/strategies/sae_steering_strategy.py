@@ -15,7 +15,7 @@ import logging
 import random
 import time
 from dataclasses import replace
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import torch
 from pydantic import BaseModel
@@ -24,11 +24,7 @@ from app.caching import CacheManager
 from app.generation import FrameItem
 from hambajuba2ba.device import synchronize
 from hambajuba2ba.generation.encoding import gpu_to_cpu_tensor
-from app.schemas import (
-    DestinationStatus,
-    BlockConfigs,
-    SlotConfigSnapshot,
-)
+from app.schemas import DestinationStatus
 from app.strategies.base import GenerationStrategy
 
 # Handlers
@@ -110,10 +106,8 @@ class SAESteeringStrategy(GenerationStrategy):
 
     async def _setup_backend(self, params: BaseModel, cached: dict) -> None:
         """SAE-specific setup: encode prompt, init destinations, replay queue."""
-        # Send block config snapshot for UI sync
-        await self.websocket.send_json(
-            BlockConfigs(configs=self._serialize_slot_configs()).model_dump()
-        )
+        # Sync slot configs to the UI (dual-emit: slot_configs + legacy)
+        await self._send_config_snapshots()
 
         # Encode prompt embeddings
         if self._prompt_embeds is None:
@@ -172,41 +166,6 @@ class SAESteeringStrategy(GenerationStrategy):
                 tensor_pooled=self._pooled_embeds,
                 label="Current prompt",
             ))
-
-    def _serialize_slot_configs(self) -> Dict[str, SlotConfigSnapshot]:
-        """Serialize current slot configs for frontend sync."""
-        payload: Dict[str, SlotConfigSnapshot] = {}
-        for block, cfg in self._get_slot_configs().items():
-            physics_preset = cfg.physics_preset
-            if physics_preset == "default":
-                physics_preset = "ambient"
-            payload[block] = SlotConfigSnapshot(
-                slot=cfg.block,
-                block=cfg.block,
-                link_target=cfg.link_target,
-                strength_min=cfg.strength_min,
-                strength_max=cfg.strength_max,
-                feature_id=cfg.feature_id,
-                enabled=cfg.enabled,
-                auto_config=cfg.auto_config,
-                sae_rank=cfg.sae_rank,
-                spatial_mode=cfg.spatial_mode,
-                spatial_mask=cfg.spatial_mask,
-                channel=cfg.channel,
-                layer=cfg.layer,
-                physics_preset=physics_preset,
-                stage_left=cfg.stage_left,
-                stage_home=cfg.stage_home,
-                stage_right=cfg.stage_right,
-                position_source=cfg.position_source,
-                intensity_source=cfg.intensity_source,
-                position_smoothing_ms=cfg.position_smoothing_ms,
-                silence_behavior=cfg.silence_behavior,
-                drift_ms=cfg.drift_ms,
-                intensity_curve=cfg.intensity_curve,
-                intensity_gamma=cfg.intensity_gamma,
-            )
-        return payload
 
     # ------------------------------------------------------------------
     # Template method hooks (called by base next_frame_batch)
@@ -449,7 +408,8 @@ class SAESteeringStrategy(GenerationStrategy):
             response = handle_slot_message(self, message)
             if response is not None:
                 return response
-            return BlockConfigs(configs=self._serialize_slot_configs()).model_dump()
+            await self._send_config_snapshots()
+            return None
 
         if is_destination_message(message):
             return handle_destination_message(self, message)

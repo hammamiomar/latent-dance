@@ -1,36 +1,45 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+/**
+ * useWebSocket — lifecycle and demux for the streaming connection.
+ *
+ * Owns the socket (connect, reconnect, teardown) and routes every backend
+ * message to its store. Sending lives in lib/wire.ts via lib/transport.ts;
+ * this hook attaches the live socket to the transport so those module
+ * functions reach it. The only callback left is onFrame — binary frames go
+ * straight to the canvas, everything else is store state.
+ *
+ * The WS endpoint is /ws/stream/{mode}, where mode comes from the
+ * capabilities manifest (lib/bootstrap.ts). connect() refuses until the
+ * manifest is known — the server would reject a mode mismatch anyway.
+ */
+
+import { useEffect, useRef, useCallback } from "react";
 import { ConnectionStatus } from "../types";
-import { WS_CONFIG, PERF_CONFIG } from "../constants";
+import { getWsUrl, WS_CONFIG, PERF_CONFIG } from "../constants";
+import { attachSocket, detachSocket } from "../lib/transport";
+import { clientPerf } from "../lib/clientPerf";
 import { usePerfStore } from "../stores/usePerfStore";
-import { blockActions } from "../stores/useBlockStore";
+import { useSlotStore } from "../stores/useSlotStore";
+import { useConnectionStore } from "../stores/useConnectionStore";
+import { useSessionStore } from "../stores/useSessionStore";
+import { useAudioStore } from "../stores/useAudioStore";
+import { useAudioActivityStore } from "../stores/useAudioActivityStore";
+import { useDestinationStore } from "../stores/useDestinationStore";
+import { parseBackendCapabilities } from "../types/wire/capabilities";
 import {
-  songIntelligenceActions,
+  useSongIntelligenceStore,
   type DecodedSongCurves,
   type SongAnalysis,
   type SongProfile,
 } from "../stores/useSongIntelligenceStore";
 import type {
   LinkTarget,
-  TrackInfo,
+  SlotConfigsMessage,
   ExtendedStemActivityMessage,
-  UpdateBlockConfigMessage,
-  BlockConfigsMessage,
 } from "../types/sae";
-import type {
-  DestinationSpace,
-  DestinationSlot,
-  DestinationType,
-  DestinationMode,
-  ReactiveConfig,
-  DestinationStatusMessage,
-} from "../types/destinations";
+import type { DestinationStatusMessage } from "../types/destinations";
 
 interface UseWebSocketOptions {
-  url: string;
   onFrame?: (data: ArrayBuffer) => void;
-  onExtendedActivity?: (data: ExtendedStemActivityMessage) => void;
-  onTrackInfo?: (info: TrackInfo) => void;
-  onDestinationStatus?: (status: DestinationStatusMessage) => void;
   autoConnect?: boolean;
   enableReconnect?: boolean;
 }
@@ -38,44 +47,6 @@ interface UseWebSocketOptions {
 interface UseWebSocketReturn {
   connect: () => void;
   disconnect: () => void;
-  sendStopGeneration: () => void;
-
-  // SAE steering
-  sendStartSAESteering: (audioId: string) => void;
-  sendUpdateBlockConfig: (message: UpdateBlockConfigMessage) => void;
-
-  // Audio sync
-  sendAudioTimeUpdate: (time: number) => void;
-  sendAudioPlay: (time: number) => void;
-  sendAudioPause: () => void;
-  sendAudioSeek: (time: number) => void;
-
-  // Steering mode
-  sendSetSteeringMode: (mode: 'auto' | 'manual') => void;
-
-  // Destination modulation
-  sendSetDestination: (
-    space: DestinationSpace,
-    slot: DestinationSlot,
-    destinationType: DestinationType,
-    value: { seed?: number; prompt?: string },
-    replaceMode?: 'direct' | 'from_blend'
-  ) => void;
-  sendClearDestination: (space: DestinationSpace, slot: DestinationSlot) => void;
-  sendFreezeBlend: (space: DestinationSpace, targetSlot: DestinationSlot) => void;
-  sendSetBlendPosition: (space: DestinationSpace, position: number) => void;
-  sendSetDestinationMode: (space: DestinationSpace, mode: DestinationMode) => void;
-  sendSetReactiveConfig: (space: DestinationSpace, config: Partial<ReactiveConfig>) => void;
-  sendSetDestinationLink: (space: DestinationSpace, linkTarget: LinkTarget) => void;
-
-  // Composition engine
-  sendSetCompositionConfig: (config: { distance?: number; mode?: string }) => void;
-
-  // State
-  status: ConnectionStatus;
-  fpsRef: React.RefObject<number>;
-  isGenerating: boolean;
-  reconnectAttempts: number;
 }
 
 export const BINARY_KIND_JPEG_FRAME = 0x01;
@@ -169,46 +140,130 @@ export function demuxBinaryPayload(buffer: ArrayBuffer): DemuxedBinaryPayload {
   return { kind: 'unknown', kindByte };
 }
 
+/** Backend perf telemetry (~2Hz); mirrors PerfStatsMessage in app/schemas.py. */
+interface PerfStatsMessage {
+  gen_fps: number;
+  queue_depth: number;
+  encode_busy: boolean;
+  encode_ms: number;
+  pending_age_ms: number;
+  avg_steer_ms: number;
+  avg_infer_ms: number;
+  avg_d2h_ms: number;
+  avg_total_ms: number;
+  delivery_p50_ms: number;
+  delivery_p95_ms: number;
+  jitter_mean_ms: number;
+  jitter_p95_ms: number;
+  drop_rate: number;
+  measured_fps: number;
+  lookahead_ms: number;
+}
+
+/** Route one parsed JSON message to its store. */
+function routeJsonMessage(msg: Record<string, unknown> & { type?: string }) {
+  switch (msg.type) {
+    case "capabilities":
+      // First message on every connection: the backend's control-input
+      // manifest. Validated at the boundary so a contract drift fails
+      // here with a field path, not as undefined reads in render code.
+      try {
+        useSessionStore.getState().setCapabilities(
+          parseBackendCapabilities(msg.capabilities),
+        );
+      } catch (error) {
+        console.error("[useWebSocket] Rejected capabilities manifest:", error);
+      }
+      break;
+    case "perf_stats": {
+      const stats = msg as unknown as PerfStatsMessage;
+      usePerfStore.getState().setStats({
+        genFps: stats.gen_fps,
+        queueDepth: stats.queue_depth,
+        encodeBusy: stats.encode_busy,
+        encodeMs: stats.encode_ms,
+        pendingAgeMs: stats.pending_age_ms,
+        avgSteerMs: stats.avg_steer_ms,
+        avgInferMs: stats.avg_infer_ms,
+        avgD2hMs: stats.avg_d2h_ms,
+        avgTotalMs: stats.avg_total_ms,
+        deliveryP50Ms: stats.delivery_p50_ms,
+        deliveryP95Ms: stats.delivery_p95_ms,
+        jitterMeanMs: stats.jitter_mean_ms,
+        jitterP95Ms: stats.jitter_p95_ms,
+        dropRate: stats.drop_rate,
+        measuredFps: stats.measured_fps,
+        lookaheadMs: stats.lookahead_ms,
+        lastUpdated: Date.now(),
+      });
+      break;
+    }
+    case "slot_configs":
+      useSlotStore.getState().applyConfigSnapshots((msg as unknown as SlotConfigsMessage).configs);
+      break;
+    case "error":
+      console.error("[WS] Backend error:", msg.message);
+      break;
+    case "extended_activity": {
+      const activity = msg as unknown as ExtendedStemActivityMessage;
+      useAudioActivityStore.getState().updateFromMessage(activity);
+
+      // Drift detection: compare backend time vs frontend time
+      const frontendTime = useAudioStore.getState().currentTime;
+      const drift = Math.abs(frontendTime - activity.audio_time);
+      clientPerf.driftSec = drift;
+      if (drift > 0.5) {
+        console.warn(
+          `[Sync] Drift detected: ${drift.toFixed(2)}s (frontend=${frontendTime.toFixed(2)}, backend=${activity.audio_time.toFixed(2)})`
+        );
+      }
+      break;
+    }
+    case "track_info":
+      useSessionStore.getState().setTrackInfo({
+        type: "track_info",
+        audio_id: msg.audio_id as string,
+        duration: msg.duration as number,
+        bpm: msg.bpm as number,
+        stems: msg.stems as string[],
+      });
+      break;
+    case "song_intelligence":
+      if (typeof msg.audio_id === "string" && msg.profile) {
+        useSongIntelligenceStore.getState().setProfile(
+          msg.audio_id,
+          msg.profile as SongProfile,
+          Array.isArray(msg.sections) ? msg.sections : [],
+          msg.analysis ? msg.analysis as SongAnalysis : null,
+        );
+      }
+      break;
+    case "destination_status":
+      useDestinationStore.getState().updateFromStatus(
+        msg as unknown as DestinationStatusMessage,
+      );
+      break;
+  }
+}
+
 export function useWebSocket({
-  url,
   onFrame,
-  onExtendedActivity,
-  onTrackInfo,
-  onDestinationStatus,
   autoConnect = false,
   enableReconnect = true,
 }: UseWebSocketOptions): UseWebSocketReturn {
   const ws = useRef<WebSocket | null>(null);
-  const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const fpsRef = useRef(0);
   const frameCountRef = useRef(0);
   const lastFpsUpdateRef = useRef(Date.now());
 
   // Reconnection — use ref to avoid stale closure
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
-  // Callback refs (avoids reconnections on parent re-render)
+  // Callback ref (avoids reconnections on parent re-render)
   const onFrameRef = useRef(onFrame);
-  const onExtendedActivityRef = useRef(onExtendedActivity);
-  const onTrackInfoRef = useRef(onTrackInfo);
-  const onDestinationStatusRef = useRef(onDestinationStatus);
-  const setPerfStats = usePerfStore((s) => s.setStats);
   useEffect(() => {
     onFrameRef.current = onFrame;
-    onExtendedActivityRef.current = onExtendedActivity;
-    onTrackInfoRef.current = onTrackInfo;
-    onDestinationStatusRef.current = onDestinationStatus;
   });
-
-  // Helper: send JSON if connected
-  const send = useCallback((payload: Record<string, unknown>) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(payload));
-    }
-  }, []);
 
   const connect = useCallback(() => {
     if (
@@ -218,16 +273,23 @@ export function useWebSocket({
       return;
     }
 
-    setStatus(ConnectionStatus.CONNECTING);
-    const socket = new WebSocket(url);
+    const mode = useSessionStore.getState().capabilities?.mode;
+    if (!mode) {
+      console.warn("[useWebSocket] No capabilities manifest yet — cannot pick a stream mode");
+      return;
+    }
+
+    const connection = useConnectionStore.getState();
+    connection.setStatus(ConnectionStatus.CONNECTING);
+    const socket = new WebSocket(getWsUrl(mode));
     socket.binaryType = "arraybuffer";
     ws.current = socket;
+    attachSocket(socket);
 
     socket.onopen = () => {
       if (ws.current !== socket) return;
-      setStatus(ConnectionStatus.CONNECTED);
+      useConnectionStore.getState().setStatus(ConnectionStatus.CONNECTED);
       reconnectAttemptsRef.current = 0;
-      setReconnectAttempts(0);
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -243,7 +305,7 @@ export function useWebSocket({
         }
 
         if (demuxed.kind === 'curves') {
-          songIntelligenceActions.setCurves(demuxed.curves);
+          useSongIntelligenceStore.getState().setCurves(demuxed.curves);
           return;
         }
 
@@ -258,7 +320,7 @@ export function useWebSocket({
         const now = Date.now();
         const elapsed = now - lastFpsUpdateRef.current;
         if (elapsed >= PERF_CONFIG.FPS_UPDATE_INTERVAL) {
-          fpsRef.current = frameCountRef.current / (elapsed / 1000);
+          clientPerf.wsFps = frameCountRef.current / (elapsed / 1000);
           frameCountRef.current = 0;
           lastFpsUpdateRef.current = now;
         }
@@ -268,74 +330,7 @@ export function useWebSocket({
       // JSON messages
       if (typeof event.data !== "string") return;
       try {
-        const msg = JSON.parse(event.data);
-        switch (msg.type) {
-          case "perf_stats":
-            setPerfStats({
-              genFps: msg.gen_fps,
-              queueDepth: msg.queue_depth,
-              encodeBusy: msg.encode_busy,
-              encodeMs: msg.encode_ms,
-              pendingAgeMs: msg.pending_age_ms,
-              avgSteerMs: msg.avg_steer_ms,
-              avgInferMs: msg.avg_infer_ms,
-              avgD2hMs: msg.avg_d2h_ms,
-              avgTotalMs: msg.avg_total_ms,
-              deliveryP50Ms: msg.delivery_p50_ms,
-              deliveryP95Ms: msg.delivery_p95_ms,
-              jitterMeanMs: msg.jitter_mean_ms,
-              jitterP95Ms: msg.jitter_p95_ms,
-              dropRate: msg.drop_rate,
-              measuredFps: msg.measured_fps,
-              lookaheadMs: msg.lookahead_ms,
-              lastUpdated: Date.now(),
-            });
-            break;
-          case "block_configs":
-            blockActions.applyBlockConfigs((msg as BlockConfigsMessage).configs);
-            break;
-          case "error":
-            console.error("[WS] Backend error:", msg.message);
-            break;
-          case "extended_activity":
-            onExtendedActivityRef.current?.({
-              type: "extended_activity",
-              audio_time: msg.audio_time,
-              stems: msg.stems,
-              prominence: msg.prominence,
-              blocks: msg.blocks,
-            });
-            break;
-          case "track_info":
-            onTrackInfoRef.current?.({
-              type: "track_info",
-              audio_id: msg.audio_id,
-              duration: msg.duration,
-              bpm: msg.bpm,
-              stems: msg.stems,
-            });
-            break;
-          case "song_intelligence":
-            if (typeof msg.audio_id === "string" && msg.profile) {
-              songIntelligenceActions.setProfile(
-                msg.audio_id,
-                msg.profile as SongProfile,
-                Array.isArray(msg.sections) ? msg.sections : [],
-                msg.analysis ? msg.analysis as SongAnalysis : null,
-              );
-            }
-            break;
-          case "destination_status":
-            onDestinationStatusRef.current?.({
-              type: "destination_status",
-              space: msg.space,
-              destination_a: msg.destination_a,
-              destination_b: msg.destination_b,
-              blend_position: msg.blend_position,
-              mode: msg.mode,
-            });
-            break;
-        }
+        routeJsonMessage(JSON.parse(event.data));
       } catch (e) {
         console.warn("[useWebSocket] Failed to parse JSON message:", e);
       }
@@ -343,15 +338,17 @@ export function useWebSocket({
 
     socket.onerror = () => {
       if (ws.current !== socket) return;
-      setStatus(ConnectionStatus.ERROR);
+      useConnectionStore.getState().setStatus(ConnectionStatus.ERROR);
     };
 
     socket.onclose = (event) => {
       if (ws.current !== socket) return;
       ws.current = null;
-      setStatus(ConnectionStatus.DISCONNECTED);
-      fpsRef.current = 0;
-      setIsGenerating(false); // Reset so handlePlayAll re-sends start on reconnect
+      detachSocket(socket);
+      const state = useConnectionStore.getState();
+      state.setStatus(ConnectionStatus.DISCONNECTED);
+      state.setGenerating(false); // Reset so handlePlayAll re-sends start on reconnect
+      clientPerf.wsFps = 0;
 
       // Reconnect on abnormal closure (uses ref to avoid stale closure)
       if (
@@ -360,13 +357,12 @@ export function useWebSocket({
         reconnectAttemptsRef.current < WS_CONFIG.MAX_RECONNECT_ATTEMPTS
       ) {
         reconnectAttemptsRef.current += 1;
-        setReconnectAttempts(reconnectAttemptsRef.current);
         reconnectTimeoutRef.current = window.setTimeout(() => {
           connect();
         }, WS_CONFIG.RECONNECT_DELAY);
       }
     };
-  }, [url, enableReconnect, setPerfStats]); // reconnectAttempts uses a ref to avoid reconnect loops
+  }, [enableReconnect]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -381,149 +377,14 @@ export function useWebSocket({
       socket.onclose = null;
       socket.close(1000, "Client requested disconnect");
       if (ws.current === socket) ws.current = null;
-      setStatus(ConnectionStatus.DISCONNECTED);
-      fpsRef.current = 0;
-      setIsGenerating(false);
+      detachSocket(socket);
+      const state = useConnectionStore.getState();
+      state.setStatus(ConnectionStatus.DISCONNECTED);
+      state.setGenerating(false);
+      clientPerf.wsFps = 0;
       reconnectAttemptsRef.current = 0;
-      setReconnectAttempts(0);
     }
   }, []);
-
-  // === Send methods ===
-
-  const sendStopGeneration = useCallback(() => {
-    send({ action: "stop_generation" });
-    setIsGenerating(false);
-  }, [send]);
-
-  const sendStartSAESteering = useCallback(
-    (audioId: string) => {
-      songIntelligenceActions.clear();
-      send({ action: "start_sae_steering", audio_id: audioId });
-      setIsGenerating(true);
-    },
-    [send],
-  );
-
-  const sendUpdateBlockConfig = useCallback(
-    (message: UpdateBlockConfigMessage) => { send(message as unknown as Record<string, unknown>); },
-    [send],
-  );
-
-  const sendAudioTimeUpdate = useCallback(
-    (time: number) => { send({ action: "audio_timeupdate", time }); },
-    [send],
-  );
-
-  const sendAudioPlay = useCallback(
-    (time: number) => { send({ action: "audio_play", time }); },
-    [send],
-  );
-
-  const sendAudioPause = useCallback(
-    () => { send({ action: "audio_pause" }); },
-    [send],
-  );
-
-  const sendAudioSeek = useCallback(
-    (time: number) => { send({ action: "audio_seek", time }); },
-    [send],
-  );
-
-  const sendSetSteeringMode = useCallback(
-    (mode: 'auto' | 'manual') => { send({ action: "set_steering_mode", mode }); },
-    [send],
-  );
-
-  const sendSetDestination = useCallback(
-    (
-      space: DestinationSpace,
-      slot: DestinationSlot,
-      destinationType: DestinationType,
-      value: { seed?: number; prompt?: string },
-      replaceMode: 'direct' | 'from_blend' = 'direct'
-    ) => {
-      send({
-        action: "set_destination",
-        space,
-        slot,
-        destination_type: destinationType,
-        seed: value.seed,
-        prompt: value.prompt,
-        replace_mode: replaceMode,
-      });
-    },
-    [send],
-  );
-
-  const sendClearDestination = useCallback(
-    (space: DestinationSpace, slot: DestinationSlot) => {
-      send({ action: "clear_destination", space, slot });
-    },
-    [send],
-  );
-
-  const sendFreezeBlend = useCallback(
-    (space: DestinationSpace, targetSlot: DestinationSlot) => {
-      send({ action: "freeze_blend", space, target_slot: targetSlot });
-    },
-    [send],
-  );
-
-  const sendSetBlendPosition = useCallback(
-    (space: DestinationSpace, position: number) => {
-      send({ action: "set_blend_position", space, position });
-    },
-    [send],
-  );
-
-  const sendSetDestinationMode = useCallback(
-    (space: DestinationSpace, mode: DestinationMode) => {
-      if (mode === 'linked') {
-        console.warn('Use sendSetDestinationLink() for linked mode');
-        return;
-      }
-      send({ action: "set_destination_mode", space, mode });
-    },
-    [send],
-  );
-
-  const sendSetReactiveConfig = useCallback(
-    (space: DestinationSpace, config: Partial<ReactiveConfig>) => {
-      send({
-        action: "set_reactive_config",
-        space,
-        stage_left: config.stageLeft,
-        stage_home: config.stageHome,
-        stage_right: config.stageRight,
-        position_source: config.positionSource,
-        intensity_source: config.intensitySource,
-        position_smoothing_ms: config.positionSmoothingMs,
-        silence_behavior: config.silenceBehavior,
-        drift_ms: config.driftMs,
-        intensity_curve: config.intensityCurve,
-        intensity_gamma: config.intensityGamma,
-        stem_rankings: config.stemRankings,
-        rank_weights: config.rankWeights,
-        blend_slew_rate: config.blendSlewRate,
-      });
-    },
-    [send],
-  );
-
-  const sendSetDestinationLink = useCallback(
-    (space: DestinationSpace, linkTarget: LinkTarget) => {
-      send({ action: "set_destination_link", space, link_target: linkTarget });
-    },
-    [send],
-  );
-
-  const sendSetCompositionConfig = useCallback(
-    (config: { distance?: number; mode?: string }) => {
-      send({ action: "set_composition_config", ...config });
-    },
-    [send],
-  );
 
   // Auto-connect
   useEffect(() => {
@@ -531,28 +392,5 @@ export function useWebSocket({
     return () => { disconnect(); };
   }, [autoConnect, connect, disconnect]);
 
-  return {
-    connect,
-    disconnect,
-    sendStopGeneration,
-    sendStartSAESteering,
-    sendUpdateBlockConfig,
-    sendAudioTimeUpdate,
-    sendAudioPlay,
-    sendAudioPause,
-    sendAudioSeek,
-    sendSetSteeringMode,
-    sendSetDestination,
-    sendClearDestination,
-    sendFreezeBlend,
-    sendSetBlendPosition,
-    sendSetDestinationMode,
-    sendSetReactiveConfig,
-    sendSetDestinationLink,
-    sendSetCompositionConfig,
-    status,
-    fpsRef,
-    isGenerating,
-    reconnectAttempts,
-  };
+  return { connect, disconnect };
 }

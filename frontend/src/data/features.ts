@@ -1,15 +1,10 @@
 /**
- * Feature Definitions and Dropdown Options
- *
- * Phase 1-2: Extended with spatial, channel, layer, and physics options.
- * 20 pre-labeled SAE features across 4 UNet blocks.
+ * Audio + labeling vocabulary for the UI: stem options, stem colors, and SAE
+ * label-category colors. Slot identity (names, display names, slot colors)
+ * lives in the capability manifest — never here.
  */
 
-import type {
-  BlockInfo,
-  BlockCode,
-  Stem,
-} from '../types/sae';
+import type { Stem } from '../types/sae';
 
 // =============================================================================
 // DROPDOWN OPTIONS
@@ -28,42 +23,6 @@ export const STEM_OPTIONS: { value: Stem; label: string; description: string }[]
   { value: 'other_high', label: 'Air', description: '>4 kHz atmosphere' },
 ];
 
-
-// =============================================================================
-// BLOCK DEFINITIONS
-// =============================================================================
-
-/** Block metadata (features loaded async via featureLoader.ts) */
-export const BLOCKS: Record<BlockCode, BlockInfo> = {
-  'down.2.1': {
-    code: 'down.2.1',
-    name: 'Composition',
-    description: 'Scene structure, mood, intensity',
-  },
-  'mid.0': {
-    code: 'mid.0',
-    name: 'Abstract',
-    description: 'Global effects, distortion',
-  },
-  'up.0.0': {
-    code: 'up.0.0',
-    name: 'Details',
-    description: 'Expressions, objects',
-  },
-  'up.0.1': {
-    code: 'up.0.1',
-    name: 'Style',
-    description: 'Patterns, textures',
-  },
-};
-
-/** Block semantic names for UI */
-export const BLOCK_NAMES: Record<BlockCode, { name: string; short: string }> = {
-  'down.2.1': { name: 'Composition', short: 'COMP' },
-  'mid.0': { name: 'Abstract', short: 'ABS' },
-  'up.0.0': { name: 'Details', short: 'DET' },
-  'up.0.1': { name: 'Style', short: 'STY' },
-};
 
 // =============================================================================
 // UI COLORS
@@ -137,13 +96,5 @@ export const STEM_COLORS: Record<Stem, string> = {
   drums_high: '#985070', // Lighter magenta - sparkle
   other_mid: '#4a8a60', // Mid green - harmony
   other_high: '#6a9098', // Muted teal - air/texture
-};
-
-/** Block colors for UI (Muted earthy palette) */
-export const BLOCK_COLORS: Record<BlockCode, string> = {
-  'down.2.1': '#c45a2a', // Muted orange - composition/structure
-  'mid.0': '#7a5090',    // Muted purple - abstract
-  'up.0.0': '#b85a7a',   // Muted pink - details
-  'up.0.1': '#5a8a4a',   // Muted green - style
 };
 

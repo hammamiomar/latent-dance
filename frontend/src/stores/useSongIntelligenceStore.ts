@@ -91,6 +91,9 @@ interface SongIntelligenceState {
   receivedAtWallTimeMs: number | null;
   setProfile: (audioId: string, profile: SongProfile, sections: number[], analysis?: SongAnalysis | null) => void;
   setCurves: (curves: DecodedSongCurves) => void;
+  /** Hydrate profile/analysis from an HTTP payload (upload flow, DATA panel
+   * refresh). Returns false when the payload carries no profile. */
+  hydrateFromPayload: (audioId: string, payload: SongIntelligencePayload) => boolean;
   clear: () => void;
 }
 
@@ -108,7 +111,7 @@ const emptyCurves = (): SongIntelligenceCurves => ({
   targetCurves: {},
 });
 
-export const useSongIntelligenceStore = create<SongIntelligenceState>((set) => ({
+export const useSongIntelligenceStore = create<SongIntelligenceState>((set, get) => ({
   audioId: null,
   profile: null,
   analysis: null,
@@ -142,6 +145,15 @@ export const useSongIntelligenceStore = create<SongIntelligenceState>((set) => (
       receivedAtWallTimeMs: Date.now(),
     })),
 
+  hydrateFromPayload: (audioId, payload) => {
+    if (!payload.song_profile) return false;
+    const sections = Array.isArray(payload.song_sections)
+      ? payload.song_sections
+      : payload.song_profile.sections;
+    get().setProfile(audioId, payload.song_profile, sections, payload.song_analysis ?? null);
+    return true;
+  },
+
   clear: () =>
     set({
       audioId: null,
@@ -153,27 +165,6 @@ export const useSongIntelligenceStore = create<SongIntelligenceState>((set) => (
       receivedAtWallTimeMs: null,
     }),
 }));
-
-export const songIntelligenceActions = {
-  setProfile: (...args: Parameters<SongIntelligenceState['setProfile']>) =>
-    useSongIntelligenceStore.getState().setProfile(...args),
-  setCurves: (...args: Parameters<SongIntelligenceState['setCurves']>) =>
-    useSongIntelligenceStore.getState().setCurves(...args),
-  hydrateFromPayload: (audioId: string, payload: SongIntelligencePayload) => {
-    if (!payload.song_profile) return false;
-    const sections = Array.isArray(payload.song_sections)
-      ? payload.song_sections
-      : payload.song_profile.sections;
-    useSongIntelligenceStore.getState().setProfile(
-      audioId,
-      payload.song_profile,
-      sections,
-      payload.song_analysis ?? null,
-    );
-    return true;
-  },
-  clear: () => useSongIntelligenceStore.getState().clear(),
-};
 
 function mergeTargetCurves(
   current: Partial<Record<LinkTarget, Record<string, Float32Array>>>,

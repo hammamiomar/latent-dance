@@ -14,7 +14,8 @@
  */
 
 import { create } from 'zustand';
-import type { StemChannelData, ExtendedStemActivityMessage, AllStems, StemProminence, BlockActivityData, BlockCode } from '../types/sae';
+import { useSlotStore } from './useSlotStore';
+import type { StemChannelData, ExtendedStemActivityMessage, AllStems, StemProminence, BlockActivityData } from '../types/sae';
 
 // Default channel values (silence)
 const DEFAULT_CHANNEL_DATA: StemChannelData = {
@@ -42,6 +43,23 @@ const createDefaultStems = (): Record<AllStems, StemChannelData> => ({
   other_high: { ...DEFAULT_CHANNEL_DATA },
 });
 
+/**
+ * Mean smoothed energy across the stems that enabled slots listen to.
+ * Drives heart/destination glow. Computed once per telemetry message; if
+ * mappings change while playback is paused, the value refreshes on the
+ * next message (a <100ms staleness that only affects idle glow).
+ */
+function computeOverallActivity(stems: Record<AllStems, StemChannelData>): number {
+  const slots = useSlotStore.getState().slots;
+  const enabled = Object.values(slots).filter((m) => m.enabled);
+  if (enabled.length === 0) return 0;
+  const sum = enabled.reduce((acc, m) => {
+    const baseStem = m.linkTarget.split('_')[0];
+    return acc + (stems[baseStem as AllStems]?.energy_smooth ?? 0);
+  }, 0);
+  return sum / enabled.length;
+}
+
 interface AudioActivityState {
   /** Current audio playback time */
   audioTime: number;
@@ -49,11 +67,14 @@ interface AudioActivityState {
   /** Per-stem channel data (all 8 stems) */
   stems: Record<AllStems, StemChannelData>;
 
+  /** Mean energy across stems linked to enabled blocks (0-1) */
+  overallActivity: number;
+
   /** Computed prominence per stem (optional) */
   prominence?: Record<string, StemProminence>;
 
-  /** Per-block physics activity (optional) */
-  blocks?: Record<BlockCode, BlockActivityData>;
+  /** Per-slot physics activity keyed by slot name (optional) */
+  blocks?: Record<string, BlockActivityData>;
 
   /** Timestamp of last update (for staleness detection) */
   lastUpdateTime: number;
@@ -71,6 +92,7 @@ interface AudioActivityState {
 export const useAudioActivityStore = create<AudioActivityState>((set) => ({
   audioTime: 0,
   stems: createDefaultStems(),
+  overallActivity: 0,
   prominence: undefined,
   lastUpdateTime: 0,
   isReceiving: false,
@@ -79,6 +101,7 @@ export const useAudioActivityStore = create<AudioActivityState>((set) => ({
     set({
       audioTime: msg.audio_time,
       stems: msg.stems,
+      overallActivity: computeOverallActivity(msg.stems),
       prominence: msg.prominence,
       blocks: msg.blocks,
       lastUpdateTime: Date.now(),
@@ -90,6 +113,7 @@ export const useAudioActivityStore = create<AudioActivityState>((set) => ({
     set({
       audioTime: 0,
       stems: createDefaultStems(),
+      overallActivity: 0,
       prominence: undefined,
       blocks: undefined,
       lastUpdateTime: 0,
@@ -97,3 +121,5 @@ export const useAudioActivityStore = create<AudioActivityState>((set) => ({
     });
   },
 }));
+
+export const useOverallActivity = () => useAudioActivityStore((s) => s.overallActivity);

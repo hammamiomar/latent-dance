@@ -90,9 +90,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState({
       errorInfo: errorInfo.componentStack || null,
     });
-
-    // TODO: Send to error tracking service
-    // Example: Sentry.captureException(error, { extra: errorInfo });
   }
 
   /**

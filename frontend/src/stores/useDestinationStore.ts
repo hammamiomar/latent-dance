@@ -163,27 +163,38 @@ export const useDestinationStore = create<DestinationStore>((set) => ({
   updateFromStatus: (msg) => {
     const space = msg.space;
     set((state) => {
+      const current = state[space];
       // In slider mode, user controls blend position - don't overwrite from server
       // In reactive/linked mode, server controls blend position via physics/audio
       // Use LOCAL mode (frontend is authoritative), not server's mode
-      const currentMode = state[space].mode;
-      const shouldUpdateBlend = currentMode === 'reactive' || currentMode === 'linked';
+      const shouldUpdateBlend = current.mode === 'reactive' || current.mode === 'linked';
 
+      // Update labels from server (keep local destinations, update labels);
+      // keep the same object when the label already matches
+      const destinationA =
+        msg.destination_a && current.destinationA?.label !== msg.destination_a
+          ? { ...current.destinationA, label: msg.destination_a }
+          : current.destinationA;
+      const destinationB =
+        msg.destination_b && current.destinationB?.label !== msg.destination_b
+          ? { ...current.destinationB, label: msg.destination_b }
+          : current.destinationB;
+      const blendPosition = shouldUpdateBlend ? msg.blend_position : current.blendPosition;
+
+      // Most ~2Hz status echoes change nothing (paused, slider mode, same
+      // labels) — return the same state so no subscriber re-renders.
+      if (
+        destinationA === current.destinationA &&
+        destinationB === current.destinationB &&
+        blendPosition === current.blendPosition
+      ) {
+        return state;
+      }
+
+      // Mode is deliberately NOT taken from the server - frontend is
+      // authoritative, preventing a stale echo from overwriting user's choice
       return {
-        [space]: {
-          ...state[space],
-          // Update labels from server (keep local destinations, update labels)
-          destinationA: msg.destination_a
-            ? { ...state[space].destinationA, label: msg.destination_a }
-            : state[space].destinationA,
-          destinationB: msg.destination_b
-            ? { ...state[space].destinationB, label: msg.destination_b }
-            : state[space].destinationB,
-          // Only update blend position in reactive/linked mode (server-driven)
-          blendPosition: shouldUpdateBlend ? msg.blend_position : state[space].blendPosition,
-          // Don't update mode from server - frontend is authoritative for mode
-          // This prevents race condition where server's stale mode overwrites user's choice
-        },
+        [space]: { ...current, destinationA, destinationB, blendPosition },
       };
     });
   },

@@ -4,6 +4,7 @@
 
 import { useRef, useEffect, useCallback, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePanelDrag } from '../../hooks/usePanelDrag';
 
 const PANEL_WIDTH = 340;
 
@@ -46,8 +47,6 @@ export function DestinationPanelWrapper({
   const contentRef = useRef<HTMLDivElement>(null);
   const [measuredHeight, setMeasuredHeight] = useState<number>(height);
   const [panelPosition, setPanelPosition] = useState({ x: 200, y: 200 });
-  const isDraggingRef = useRef(false);
-  const dragOffsetRef = useRef({ x: 0, y: 0 });
   const didInitPositionRef = useRef(false);
   const prevScrollHeightRef = useRef(0);
   const effectiveHeight = autoHeight ? measuredHeight : height;
@@ -189,37 +188,14 @@ export function DestinationPanelWrapper({
     return () => observer.disconnect();
   }, [isOpen]);
 
-  // Title bar drag handler
-  const handleTitleBarMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-
-    isDraggingRef.current = true;
-    dragOffsetRef.current = {
-      x: e.clientX - panelPosition.x,
-      y: e.clientY - panelPosition.y,
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-
-      const padding = 20;
-      const bounds = getBounds();
-      const newX = Math.max(padding, Math.min(bounds.width - PANEL_WIDTH - padding, e.clientX - dragOffsetRef.current.x));
-      const newY = Math.max(padding, Math.min(bounds.height - effectiveHeight - padding, e.clientY - dragOffsetRef.current.y));
-
-      setPanelPosition({ x: newX, y: newY });
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [panelPosition, effectiveHeight, getBounds]);
+  // Title bar drag (shared floating-panel behavior)
+  const { isDraggingRef, onTitleBarMouseDown } = usePanelDrag({
+    position: panelPosition,
+    setPosition: setPanelPosition,
+    getBounds,
+    panelWidth: PANEL_WIDTH,
+    panelHeight: effectiveHeight,
+  });
 
   return (
     <AnimatePresence>
@@ -247,7 +223,7 @@ export function DestinationPanelWrapper({
               cursor: isDraggingRef.current ? 'grabbing' : 'grab',
               userSelect: 'none',
             }}
-            onMouseDown={handleTitleBarMouseDown}
+            onMouseDown={onTitleBarMouseDown}
           >
             <div className="flex items-center gap-2">
               <div

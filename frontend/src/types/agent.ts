@@ -1,5 +1,4 @@
 import type {
-  BlockCode,
   IntensitySource,
   LinkTarget,
   PositionSource,
@@ -56,7 +55,7 @@ export interface AgentDirectiveClause {
   subject?: string | null;
   transformation?: string | null;
   effect?: string | null;
-  target_blocks?: BlockCode[];
+  target_blocks?: string[];
   drivers?: AgentIntentDriver[];
   timing: AgentIntentTiming;
   strength: AgentIntentStrength;

@@ -11,7 +11,7 @@ interface CanvasProps {
 export interface CanvasHandle {
   renderFrame: (data: ArrayBuffer) => Promise<void>;
   clear: () => void;
-  /** Get the raw canvas element for sampling (Phase 3D video sync) */
+  /** Raw canvas element, for callers that sample or capture frames. */
   getCanvas: () => HTMLCanvasElement | null;
 }
 
@@ -126,7 +126,7 @@ export const Canvas = ({ className, ref }: CanvasProps) => {
     },
 
     /**
-     * Get raw canvas element for sampling (Phase 3D video sync)
+     * Raw canvas element, for callers that sample or capture frames.
      */
     getCanvas: () => canvasRef.current,
   }));

@@ -1,5 +1,9 @@
 /**
- * BlockConfigPanel - Redesigned block configuration panel
+ * SlotConfigPanel - configuration panel for one steering slot.
+ *
+ * Slot identity (name, color, description) comes from the capability
+ * manifest via OrbSystem; the config values come from the slot store. All
+ * writes go through lib/slotControls (optimistic store update + wire send).
  *
  * Layout:
  * 1. Link Target
@@ -12,14 +16,27 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
+import { usePanelDrag } from '../../hooks/usePanelDrag';
 import { Win95Button } from '../ui/Win95Window';
 import { Win95Select } from '../ui/Win95Select';
 import { LinkTargetSelectCompact } from '../ui/LinkTargetSelect';
 import { StrengthRangeSlider } from '../ui/StrengthRangeSlider';
 import { AutoManualToggle } from '../ui/AutoManualToggle';
+import {
+  handleSlotLinkTargetChange,
+  handleSlotFeatureChange,
+  handleSlotStrengthRangeChange,
+  handleSlotAutoConfigChange,
+  handleSlotSpatialModeChange,
+  handleSlotSpatialMaskChange,
+  handleSlotIntensitySourceChange,
+  handleSlotIntensityCurveChange,
+  handleSlotIntensityGammaChange,
+  handleSlotSaeRankChange,
+  handleToggleSlot,
+} from '../../lib/slotControls';
 import type {
-  BlockCode,
-  BlockMapping,
+  SlotMapping,
   LinkTarget,
   Rank,
   SpatialMode,
@@ -27,13 +44,9 @@ import type {
   IntensitySource,
   IntensityCurve,
 } from '../../types/sae';
-import {
-  BLOCKS,
-  BLOCK_COLORS,
-} from '../../data/features';
 import { FeaturePicker } from './FeaturePicker';
 import { SpatialGrid } from './SpatialGrid';
-import { getBlockFeatures } from '../../data/featureLoader';
+import { getSlotFeatures } from '../../data/featureLoader';
 
 // =============================================================================
 // CONSTANTS
@@ -62,53 +75,36 @@ const RANK_OPTIONS: { value: Rank; short: string; label: string }[] = [
 ];
 
 // =============================================================================
-// BLOCK CONFIG PANEL
+// SLOT CONFIG PANEL
 // =============================================================================
 
-interface BlockConfigPanelProps {
-  block: BlockCode;
-  mapping: BlockMapping;
+interface SlotConfigPanelProps {
+  slot: string;
+  mapping: SlotMapping;
+  /** Manifest display metadata for the slot */
+  displayName: string;
+  description: string;
+  accentColor: string;
   isOpen: boolean;
   onClose: () => void;
-  onLinkTargetChange: (block: BlockCode, linkTarget: LinkTarget) => void;
-  onFeatureChange: (block: BlockCode, featureId: number, featureLabel: string) => void;
-  onStrengthRangeChange: (block: BlockCode, range: StrengthRange) => void;
-  onAutoConfigChange: (block: BlockCode, autoConfig: boolean) => void;
-  onSpatialModeChange: (block: BlockCode, spatialMode: SpatialMode) => void;
-  onSpatialMaskChange: (block: BlockCode, mask: number[]) => void;
-  onIntensitySourceChange: (block: BlockCode, source: IntensitySource) => void;
-  onIntensityCurveChange: (block: BlockCode, curve: IntensityCurve) => void;
-  onIntensityGammaChange: (block: BlockCode, gamma: number) => void;
-  onSaeRankChange: (block: BlockCode, rank: Rank) => void;
-  onToggle: (block: BlockCode) => void;
   orbPosition?: { x: number; y: number };
   containerSize?: { width: number; height: number };
 }
 
-export function BlockConfigPanel({
-  block,
+export function SlotConfigPanel({
+  slot,
   mapping,
+  displayName,
+  description,
+  accentColor,
   isOpen,
   onClose,
-  onLinkTargetChange,
-  onFeatureChange,
-  onStrengthRangeChange,
-  onAutoConfigChange,
-  onSpatialModeChange,
-  onSpatialMaskChange,
-  onIntensitySourceChange,
-  onIntensityCurveChange,
-  onIntensityGammaChange,
-  onSaeRankChange,
-  onToggle,
   orbPosition,
   containerSize,
-}: BlockConfigPanelProps) {
+}: SlotConfigPanelProps) {
   const popupRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef(0);
-  const blockInfo = BLOCKS[block];
-  const blockColor = BLOCK_COLORS[block];
 
   // Panel position state — compute eagerly from orbPosition to avoid flash at (200,200)
   const [panelPosition, setPanelPosition] = useState(() => {
@@ -130,10 +126,6 @@ export function BlockConfigPanel({
   const [showScrollHint, setShowScrollHint] = useState(false);
   const [rankOpen, setRankOpen] = useState(false);
   const rankRef = useRef<HTMLDivElement>(null);
-
-  // Drag state
-  const isDraggingRef = useRef(false);
-  const dragOffsetRef = useRef({ x: 0, y: 0 });
 
   // Container bounds — use prop (physics world dimensions = belly screen content area).
   // Previously used popupRef.parentElement.getBoundingClientRect() but on first render
@@ -191,7 +183,7 @@ export function BlockConfigPanel({
     const handleClickOutside = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
         const target = e.target as Element;
-        if (!target.closest(`[data-block="${block}"]`)) {
+        if (!target.closest(`[data-slot="${slot}"]`)) {
           onClose();
         }
       }
@@ -207,84 +199,84 @@ export function BlockConfigPanel({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen, onClose, block]);
+  }, [isOpen, onClose, slot]);
 
-  // Handlers
+  // Handlers — adapt child (value) callbacks to the slotControls write path
   const handleLinkTargetChange = useCallback(
-    (linkTarget: LinkTarget) => onLinkTargetChange(block, linkTarget),
-    [block, onLinkTargetChange]
+    (linkTarget: LinkTarget) => handleSlotLinkTargetChange(slot, linkTarget),
+    [slot]
   );
 
   const handleFeatureChange = useCallback(
     (featureId: number, featureLabel: string) => {
-      onFeatureChange(block, featureId, featureLabel);
+      handleSlotFeatureChange(slot, featureId, featureLabel);
     },
-    [block, onFeatureChange]
+    [slot]
   );
 
   const handleStrengthRangeChange = useCallback(
-    (range: StrengthRange) => onStrengthRangeChange(block, range),
-    [block, onStrengthRangeChange]
+    (range: StrengthRange) => handleSlotStrengthRangeChange(slot, range),
+    [slot]
   );
 
   const handleAutoConfigChange = useCallback(
-    (mode: 'auto' | 'manual') => onAutoConfigChange(block, mode === 'auto'),
-    [block, onAutoConfigChange]
+    (mode: 'auto' | 'manual') => handleSlotAutoConfigChange(slot, mode === 'auto'),
+    [slot]
   );
 
   const handleSpatialModeChange = useCallback(
-    (value: SpatialMode) => onSpatialModeChange(block, value),
-    [block, onSpatialModeChange]
+    (value: SpatialMode) => handleSlotSpatialModeChange(slot, value),
+    [slot]
   );
 
   const handleSpatialMaskChange = useCallback(
-    (mask: number[]) => onSpatialMaskChange(block, mask),
-    [block, onSpatialMaskChange]
+    (mask: number[]) => handleSlotSpatialMaskChange(slot, mask),
+    [slot]
   );
 
   const handleIntensitySourceChange = useCallback(
-    (source: IntensitySource) => onIntensitySourceChange(block, source),
-    [block, onIntensitySourceChange]
+    (source: IntensitySource) => handleSlotIntensitySourceChange(slot, source),
+    [slot]
   );
 
   const handleIntensityCurveChange = useCallback(
-    (curve: IntensityCurve) => onIntensityCurveChange(block, curve),
-    [block, onIntensityCurveChange]
+    (curve: IntensityCurve) => handleSlotIntensityCurveChange(slot, curve),
+    [slot]
   );
 
   const handleIntensityGammaChange = useCallback(
-    (value: number) => onIntensityGammaChange(block, value),
-    [block, onIntensityGammaChange]
+    (value: number) => handleSlotIntensityGammaChange(slot, value),
+    [slot]
   );
 
-  const handleToggle = useCallback(() => onToggle(block), [block, onToggle]);
+  const handleToggle = useCallback(() => handleToggleSlot(slot), [slot]);
 
   const handleRankSelect = useCallback(
     (rank: Rank) => {
-      onSaeRankChange(block, rank);
+      handleSlotSaeRankChange(slot, rank);
       setRankOpen(false);
     },
-    [block, onSaeRankChange]
+    [slot]
   );
 
   // Randomize all settings
   const handleRandomize = useCallback(() => {
-    const allFeatures = getBlockFeatures(block);
+    const allFeatures = getSlotFeatures(slot);
     if (allFeatures.length > 0) {
       const randomFeature = allFeatures[Math.floor(Math.random() * allFeatures.length)];
-      onFeatureChange(block, randomFeature.id, randomFeature.label);
+      handleSlotFeatureChange(slot, randomFeature.id, randomFeature.label);
     }
 
     // Random strength range
     const minVal = Math.random() * 10;
     const maxVal = minVal + 5 + Math.random() * 15;
-    onStrengthRangeChange(block, {
+    handleSlotStrengthRangeChange(slot, {
       strengthMin: Math.round(minVal * 10) / 10,
       strengthMax: Math.round(maxVal * 10) / 10,
       stageHome: mapping.strengthRange.stageHome,
     });
 
-  }, [block, mapping.strengthRange.stageHome, onFeatureChange, onStrengthRangeChange]);
+  }, [slot, mapping.strengthRange.stageHome]);
 
   // Close rank dropdown on click outside
   useEffect(() => {
@@ -298,14 +290,14 @@ export function BlockConfigPanel({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [rankOpen]);
 
-  // Position calculation on open — only recompute when panel opens or block changes,
+  // Position calculation on open — only recompute when panel opens or slot changes,
   // NOT when orbPosition updates (that would make the panel follow the orb during drag)
   useEffect(() => {
     if (isOpen) {
       setPanelPosition(calculateInitialPosition());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, block]);
+  }, [isOpen, slot]);
 
   // Re-check scroll state when content layout changes
   useEffect(() => {
@@ -355,50 +347,14 @@ export function BlockConfigPanel({
     return () => observer.disconnect();
   }, [isOpen, checkScrollState]);
 
-  // Title bar drag handling
-  const handleTitleBarMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation(); // Prevent Matter.js mouse constraint from intercepting
-
-      isDraggingRef.current = true;
-      dragOffsetRef.current = {
-        x: e.clientX - panelPosition.x,
-        y: e.clientY - panelPosition.y,
-      };
-
-      const handleMouseMove = (e: MouseEvent) => {
-        if (!isDraggingRef.current) return;
-
-        const newX = e.clientX - dragOffsetRef.current.x;
-        const newY = e.clientY - dragOffsetRef.current.y;
-
-        const padding = 20;
-        const bounds = getBounds();
-        const constrainedX = Math.max(
-          padding,
-          Math.min(bounds.width - POPUP_WIDTH - padding, newX)
-        );
-        const constrainedY = Math.max(
-          padding,
-          Math.min(bounds.height - POPUP_HEIGHT - padding, newY)
-        );
-
-        setPanelPosition({ x: constrainedX, y: constrainedY });
-      };
-
-      const handleMouseUp = () => {
-        isDraggingRef.current = false;
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    },
-    [panelPosition, getBounds]
-  );
+  // Title bar drag (shared floating-panel behavior)
+  const { isDraggingRef, onTitleBarMouseDown } = usePanelDrag({
+    position: panelPosition,
+    setPosition: setPanelPosition,
+    getBounds,
+    panelWidth: POPUP_WIDTH,
+    panelHeight: POPUP_HEIGHT,
+  });
 
   const currentCurve = mapping.intensityCurve || 'linear';
 
@@ -417,35 +373,35 @@ export function BlockConfigPanel({
             flexDirection: 'column',
             animation: 'panelFadeIn 0.15s ease-out',
           }}
-          data-block={block}
+          data-slot={slot}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Title Bar (fixed, never scrolls) */}
           <div
             className="win95-title-bar shrink-0"
             style={{
-              background: `linear-gradient(90deg, ${blockColor}40 0%, var(--color-void-elevated) 100%)`,
-              borderBottom: `2px solid ${blockColor}60`,
+              background: `linear-gradient(90deg, ${accentColor}40 0%, var(--color-void-elevated) 100%)`,
+              borderBottom: `2px solid ${accentColor}60`,
               cursor: isDraggingRef.current ? 'grabbing' : 'grab',
               userSelect: 'none',
             }}
-            onMouseDown={handleTitleBarMouseDown}
+            onMouseDown={onTitleBarMouseDown}
           >
             <div className="flex items-center gap-2">
               <div
                 className="w-2 h-2 rounded-full"
-                style={{ background: blockColor, boxShadow: `0 0 6px ${blockColor}` }}
+                style={{ background: accentColor, boxShadow: `0 0 6px ${accentColor}` }}
               />
-              <span className="win95-title-bar__text">{blockInfo.name}</span>
+              <span className="win95-title-bar__text">{displayName}</span>
               <span
                 style={{
                   fontSize: '0.55rem',
                   fontFamily: 'var(--font-mono)',
-                  color: blockColor,
+                  color: accentColor,
                   opacity: 0.5,
                 }}
               >
-                {block}
+                {slot}
               </span>
             </div>
             <div className="win95-title-bar__buttons">
@@ -462,7 +418,7 @@ export function BlockConfigPanel({
             className="pt-2 pb-3 px-4 flex flex-col gap-2 overflow-y-auto flex-1 min-h-0"
             onScroll={checkScrollState}
           >
-            {/* Header: Rank + Randomize + Enable (compact, no redundant block name) */}
+            {/* Header: Rank + Randomize + Enable (compact, no redundant slot name) */}
             <div className="flex items-center justify-end gap-1">
               {/* Rank Selector */}
               <div ref={rankRef} style={{ position: 'relative' }}>
@@ -518,7 +474,7 @@ export function BlockConfigPanel({
                               width: '100%',
                               padding: '4px 8px',
                               border: 'none',
-                              background: isActive ? `${blockColor}20` : 'transparent',
+                              background: isActive ? `${accentColor}20` : 'transparent',
                               cursor: 'pointer',
                               fontFamily: 'var(--font-mono)',
                               fontSize: '10px',
@@ -529,7 +485,7 @@ export function BlockConfigPanel({
                             }}
                           >
                             <span style={{
-                              color: isActive ? blockColor : 'var(--color-text-dim)',
+                              color: isActive ? accentColor : 'var(--color-text-dim)',
                               fontSize: '8px',
                               width: 10,
                             }}>
@@ -563,8 +519,8 @@ export function BlockConfigPanel({
                 className={`text-xs px-3 ${mapping.enabled ? 'win95-button--primary' : ''}`}
                 onClick={handleToggle}
                 style={{
-                  background: mapping.enabled ? `${blockColor}30` : undefined,
-                  borderColor: mapping.enabled ? blockColor : undefined,
+                  background: mapping.enabled ? `${accentColor}30` : undefined,
+                  borderColor: mapping.enabled ? accentColor : undefined,
                 }}
               >
                 {mapping.enabled ? '● ON' : '○ OFF'}
@@ -595,11 +551,11 @@ export function BlockConfigPanel({
                 SAE FEATURE
               </span>
               <FeaturePicker
-                block={block}
+                slot={slot}
                 selectedId={mapping.featureId}
                 selectedLabel={mapping.featureLabel}
                 onChange={handleFeatureChange}
-                blockColor={blockColor}
+                accentColor={accentColor}
               />
             </div>
 
@@ -650,7 +606,7 @@ export function BlockConfigPanel({
                 <SpatialGrid
                   mask={mapping.spatialMask}
                   onChange={handleSpatialMaskChange}
-                  blockColor={blockColor}
+                  blockColor={accentColor}
                 />
               )}
 
@@ -740,12 +696,12 @@ export function BlockConfigPanel({
             </div>
             )}
 
-            {/* Block Description */}
+            {/* Slot Description */}
             <div
               className="text-xxs text-center pt-1"
               style={{ color: 'var(--color-text-dim)' }}
             >
-              {blockInfo.description}
+              {description}
             </div>
           </div>
 

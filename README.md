@@ -243,8 +243,12 @@ Prerequisites:
 - `uv`
 - Bun 1.3.5+
 - Node 20.19+
+- System libraries: `ffmpeg` and `libturbojpeg`
+  (macOS: `brew install ffmpeg jpeg-turbo` · Debian/Ubuntu:
+  `apt install ffmpeg libturbojpeg0-dev`)
 - CUDA GPU for real-time generation; the public GPU path is tested on Blackwell
-  / RTX 5090 with PyTorch CUDA 12.8
+  / RTX 5090 with PyTorch CUDA 12.8. **No CUDA GPU? See
+  [No GPU? Two ways in](#no-gpu-two-ways-in) below.**
 
 ```bash
 uv sync --extra audio-gpu
@@ -271,6 +275,42 @@ Run the frontend locally during development:
 cd frontend
 bun dev
 ```
+
+### No GPU? Two ways in
+
+The frontend renders whatever the connected backend declares in its capability
+manifest (`GET /api/capabilities`), so the same build runs against every
+backend below.
+
+**Mock backend — any machine, zero weights.** The full instrument (steering
+orbs, config panels, audio analysis, telemetry) with synthetic frames standing
+in for the diffusion model. Nothing downloads; it boots in about a second:
+
+```bash
+uv sync --extra audio
+cd frontend && bun install && bun run build && cd ..
+HAMBA_MODE=mock uv run hambajuba
+```
+
+Open <http://localhost:8000>: six steering slots render from the mock's
+manifest. Upload a song and the frame bands light up with the same
+physics-smoothed signals a GPU backend would receive — useful for feeling out
+the control surface, and it doubles as the frontend-dev backend.
+
+**Apple Silicon — real generation, unhurried.** The full SDXL-Turbo + SAE
+steering pipeline runs eagerly on MPS. This is a correctness tier, not the
+real-time tier (roughly 3 FPS at 512px on an M1 Max — a slow dream rather
+than a dance):
+
+```bash
+uv sync --extra audio
+cd frontend && bun install && bun run build && cd ..
+uv run hambajuba
+```
+
+The device auto-detects (`cuda → mps → cpu`); models and SAE weights download
+on first boot. Everything works — steering, spatial masks, prompt scenes —
+just slowly.
 
 ## Hamba Brain / Hermes Agent
 

@@ -1,8 +1,12 @@
 /**
  * Visualizer - The render tree for the music visualizer.
  *
- * Receives all state/handlers from useAppCore via props.
- * Positions everything absolutely within a relative container.
+ * Receives only refs/physics/orchestration from useAppCore; everything else
+ * comes from stores and lib/wire.ts right here, so nothing rides through
+ * this component untouched. High-frequency audio state (activity,
+ * prominence) is deliberately NOT subscribed at this level — the leaf
+ * components that render it subscribe themselves, so this tree only
+ * re-renders on user interaction and connection changes.
  *
  * NOTE: PerfOverlay, FxPanel, and HelpDialog are rendered by the app shell
  * (BrowserApp / DesktopApp), NOT here. This keeps Visualizer mode-agnostic.
@@ -17,76 +21,66 @@ import { AudioPlayerWindow } from "../AudioPlayerWindow";
 import { OrbSystem } from "../OrbSystem";
 import { Notifications } from "../Notifications";
 import { CompositionPanel, PromptDestinationPanel } from "../scenes";
+import { useTrackInfo } from "../../stores/useSessionStore";
+import { useConnectionStore } from "../../stores/useConnectionStore";
+import { usePlayerWindowStore } from "../../stores/usePlayerWindowStore";
 import { useDestinationStore } from "../../stores/useDestinationStore";
 import { useEffectsStore } from "../../stores/useEffectsStore";
 import { useShallow } from "zustand/shallow";
+import {
+  sendAudioPlay,
+  sendAudioPause,
+  sendAudioSeek,
+  sendAudioTimeUpdate,
+  sendStopGeneration,
+  sendSetDestination,
+  sendClearDestination,
+  sendSetCompositionConfig,
+} from "../../lib/wire";
+import {
+  handleSetPrompt,
+  handleClearPromptDestination,
+  handlePromptFreezeBlend,
+  handlePromptSetBlendPosition,
+  handlePromptSetMode,
+  handlePromptSetReactiveConfig,
+  handlePromptSetLinkTarget,
+} from "../../lib/destinationControls";
 import type { AppCore } from "../../hooks/useAppCore";
+import type { DestinationSpace } from "../../types/destinations";
 
 /** Stable empty object — avoids creating new reference every render */
 const EMPTY_HOVER: Record<string, boolean> = {};
+
+function handleDestinationOrbClick(space: DestinationSpace) {
+  useDestinationStore.getState().setSelectedSpace(space);
+}
+
+function handleDestinationPanelClose() {
+  useDestinationStore.getState().setSelectedSpace(null);
+}
+
+function handleHeartClick() {
+  usePlayerWindowStore.getState().openFromHeart();
+}
 
 // ============================================================================
 // Visualizer
 // ============================================================================
 
 export function Visualizer(props: AppCore) {
-  const {
-    physics,
-    canvasRef,
-    containerRef,
-    dimensions,
-    // Store data
-    stemActivity,
-    blockMappings,
-    trackInfo,
-    stemProminence,
-    latentDestinations,
-    promptDestinations,
-    selectedSpace,
-    // WebSocket
-    status,
-    isGenerating,
-    isPlayerOpen,
-    isPlayerMinimized,
-    // WebSocket sends
-    sendSetDestination,
-    sendClearDestination,
-    sendSetCompositionConfig,
-    sendStopGeneration,
-    sendAudioPlay,
-    sendAudioPause,
-    sendAudioSeek,
-    sendAudioTimeUpdate,
-    // Handlers
-    handleHeartClick,
-    handlePlayerClose,
-    handlePlayerMinimize,
-    handlePlayAll,
-    handleAudioReady,
-    handleDestinationOrbClick,
-    handleDestinationPanelClose,
-    overallActivity,
-    // Block config handlers
-    handleBlockLinkTargetChange,
-    handleBlockFeatureChange,
-    handleBlockStrengthRangeChange,
-    handleBlockAutoConfigChange,
-    handleBlockSpatialModeChange,
-    handleBlockSpatialMaskChange,
-    handleBlockIntensitySourceChange,
-    handleBlockIntensityCurveChange,
-    handleBlockIntensityGammaChange,
-    handleBlockSaeRankChange,
-    handleToggleBlock,
-    // Destination handlers
-    handleSetPrompt,
-    handleClearPromptDestination,
-    handlePromptFreezeBlend,
-    handlePromptSetBlendPosition,
-    handlePromptSetMode,
-    handlePromptSetReactiveConfig,
-    handlePromptSetLinkTarget,
-  } = props;
+  const { physics, canvasRef, containerRef, dimensions, handlePlayAll, handleAudioReady } = props;
+
+  const trackInfo = useTrackInfo();
+  const status = useConnectionStore((s) => s.status);
+  const isGenerating = useConnectionStore((s) => s.isGenerating);
+  const isPlayerOpen = usePlayerWindowStore((s) => s.isOpen);
+  const isPlayerMinimized = usePlayerWindowStore((s) => s.isMinimized);
+
+  // Destination modulation store (shallow compare to avoid re-render on blendPosition updates)
+  const latentDestinations = useDestinationStore(useShallow((s) => s.latent));
+  const promptDestinations = useDestinationStore(useShallow((s) => s.prompt));
+  const selectedSpace = useDestinationStore((s) => s.selectedSpace);
 
   // Visual effects from store (shallow selector: only re-render when these 6 fields change)
   const { showCrt, showDither, showChromatic, showBloom, showVhsTracking, showHeavyGrain } =
@@ -143,12 +137,9 @@ export function Visualizer(props: AppCore) {
 
       {/* Plant Stems - waveform visualization connecting flowers to heart */}
       <PlantStems
-        blockMappings={blockMappings}
         stemOrbBodies={physics.bodies.stemOrbs}
         heartBody={physics.bodies.heart}
         destinationOrbBodies={physics.bodies.destinationOrbs}
-        latentConfigured={latentDestinations.destinationA !== null && latentDestinations.destinationB !== null}
-        promptConfigured={promptDestinations.destinationA !== null && promptDestinations.destinationB !== null}
         width={dimensions.width}
         height={dimensions.height}
       />
@@ -160,8 +151,6 @@ export function Visualizer(props: AppCore) {
         heartBody={physics.bodies.heart}
         stemOrbBodies={physics.bodies.stemOrbs}
         destinationOrbBodies={physics.bodies.destinationOrbs}
-        heartActivity={overallActivity}
-        heartBpm={trackInfo?.bpm ?? 120}
         heartIsDragging={physics.isDragging(physics.bodies.heart)}
         heartIsHovered={false}
         heartIsPlayerOpen={isPlayerOpen && !isPlayerMinimized}
@@ -169,9 +158,6 @@ export function Visualizer(props: AppCore) {
           (latentDestinations.destinationA !== null || latentDestinations.destinationB !== null) &&
           (promptDestinations.destinationA !== null || promptDestinations.destinationB !== null)
         }
-        blockMappings={blockMappings}
-        stemActivity={stemActivity}
-        destinationActivity={overallActivity}
         destinationStates={destinationStates}
         orbHoverStates={EMPTY_HOVER}
       />
@@ -181,30 +167,14 @@ export function Visualizer(props: AppCore) {
         body={physics.bodies.heart}
         isDragging={physics.isDragging(physics.bodies.heart)}
         onClick={handleHeartClick}
-        activity={overallActivity}
       />
 
-      {/* Block Orbs */}
+      {/* Slot Orbs */}
       <OrbSystem
         stemBodies={physics.bodies.stemOrbs}
         destinationBodies={physics.bodies.destinationOrbs}
         isDragging={physics.isDragging}
-        stemActivity={stemActivity}
-        stemProminence={stemProminence}
-        blockMappings={blockMappings}
         containerSize={dimensions}
-        onLinkTargetChange={handleBlockLinkTargetChange}
-        onFeatureChange={handleBlockFeatureChange}
-        onStrengthRangeChange={handleBlockStrengthRangeChange}
-        onAutoConfigChange={handleBlockAutoConfigChange}
-        onSpatialModeChange={handleBlockSpatialModeChange}
-        onSpatialMaskChange={handleBlockSpatialMaskChange}
-        onIntensitySourceChange={handleBlockIntensitySourceChange}
-        onIntensityCurveChange={handleBlockIntensityCurveChange}
-        onIntensityGammaChange={handleBlockIntensityGammaChange}
-        onSaeRankChange={handleBlockSaeRankChange}
-        onToggleBlock={handleToggleBlock}
-        destinationActivity={overallActivity}
         destinationStates={destinationStates}
         onDestinationClick={handleDestinationOrbClick}
       />
@@ -266,8 +236,8 @@ export function Visualizer(props: AppCore) {
       {/* Audio Player Window */}
       <AudioPlayerWindow
         isOpen={isPlayerOpen}
-        onClose={handlePlayerClose}
-        onMinimize={handlePlayerMinimize}
+        onClose={() => usePlayerWindowStore.getState().close()}
+        onMinimize={() => usePlayerWindowStore.getState().minimize()}
         isMinimized={isPlayerMinimized}
         onPlay={sendAudioPlay}
         onPause={sendAudioPause}

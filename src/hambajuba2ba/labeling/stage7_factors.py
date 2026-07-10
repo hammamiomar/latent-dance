@@ -252,7 +252,7 @@ def _find_common_theme(labels: list[str], min_count: int = 3) -> str | None:
     return common[0][0]
 
 
-# ── TODO: Factor label strategy ─────────────────────────────────
+# ── Factor label strategy: design notes ─────────────────────────
 #
 # Current approach: use the highest-weighted feature's label, or
 # the common theme word if 3+ constituent labels share one.

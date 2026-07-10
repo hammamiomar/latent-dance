@@ -117,7 +117,7 @@ class StemFeatures:
     duration: float
     fps: float
 
-    # Optional HPSS-derived fields (Phase 1 extension)
+    # Optional HPSS-derived fields
     hpss_ratio: float | None = None  # Percussive energy ratio (0=harmonic, 1=percussive)
     flux_normalized: np.ndarray | None = None  # Amplitude-normalized flux (layer detection)
     energy_db: np.ndarray | None = None  # Energy in dB (activity gating)
@@ -126,18 +126,18 @@ class StemFeatures:
     harmonic_energy: np.ndarray | None = None  # (T,) Harmonic component energy [0,1]
     percussive_energy: np.ndarray | None = None  # (T,) Percussive component energy [0,1]
 
-    # Harmonic features (Phase 2)
+    # Harmonic features
     tension: np.ndarray | None = None  # (T,) Combined roughness/entropy tension [0,1]
     tonal_distance: np.ndarray | None = None  # (T,) JSD from track-average chroma [0,1]
     chroma: np.ndarray | None = None  # (12, T) Chromagram pitch class representation
     chroma_centroid: np.ndarray | None = None  # (T,) Circular mean of chroma bins [0,1]
 
-    # Pitch tracking (Phase 3)
+    # Pitch tracking
     pitch_hz: np.ndarray | None = None  # (T,) Hz, 0=unvoiced
     pitch_confidence: np.ndarray | None = None  # (T,) 0-1 voicing confidence
     pitch_normalized: np.ndarray | None = None  # (T,) 0-1 scaled for spatial mapping
 
-    # Structural features (§8: structural awareness)
+    # Structural features (novelty + layer detection)
     novelty_short: np.ndarray | None = None  # (T,) 0-1, transients/fills (0.5-2s)
     novelty_medium: np.ndarray | None = None  # (T,) 0-1, phrase boundaries (4-8s)
     novelty_long: np.ndarray | None = None  # (T,) 0-1, section changes (16-32s)
@@ -164,7 +164,7 @@ class StemFeatures:
             "flash": self.flash,
             "sustain": self.sustain,
         }
-        # Add optional Phase 1 channels if present
+        # Add optional HPSS-derived channels if present
         if self.flux_normalized is not None:
             channels["flux_normalized"] = self.flux_normalized
         if self.energy_db is not None:
@@ -174,21 +174,21 @@ class StemFeatures:
             channels["harmonic_energy"] = self.harmonic_energy
         if self.percussive_energy is not None:
             channels["percussive_energy"] = self.percussive_energy
-        # Add optional Phase 2 (harmonic) channels if present
+        # Add optional harmonic channels if present
         if self.tension is not None:
             channels["tension"] = self.tension
         if self.tonal_distance is not None:
             channels["tonal_distance"] = self.tonal_distance
         if self.chroma_centroid is not None:
             channels["chroma_centroid"] = self.chroma_centroid
-        # Add optional Phase 3 (pitch) channels if present
+        # Add optional pitch channels if present
         if self.pitch_hz is not None:
             channels["pitch_hz"] = self.pitch_hz
         if self.pitch_confidence is not None:
             channels["pitch_confidence"] = self.pitch_confidence
         if self.pitch_normalized is not None:
             channels["pitch_normalized"] = self.pitch_normalized
-        # Add structural features (§8) if present
+        # Add structural channels if present
         if self.novelty_short is not None:
             channels["novelty_short"] = self.novelty_short
         if self.novelty_medium is not None:
@@ -203,12 +203,12 @@ class StemFeatures:
 
     # Known optional channels that may not be populated
     _OPTIONAL_CHANNELS = frozenset({
-        "flux_normalized", "energy_db",  # Phase 1
-        "harmonic_energy", "percussive_energy",  # Phase 1 v2
-        "tension", "tonal_distance", "chroma_centroid",  # Phase 2
-        "pitch_hz", "pitch_confidence", "pitch_normalized",  # Phase 3
-        "novelty_short", "novelty_medium", "novelty_long",  # §8 structural
-        "novelty_short_deriv", "novelty_medium_deriv",  # §8 derivatives
+        "flux_normalized", "energy_db",  # HPSS-derived
+        "harmonic_energy", "percussive_energy",  # HPSS split
+        "tension", "tonal_distance", "chroma_centroid",  # harmonic
+        "pitch_hz", "pitch_confidence", "pitch_normalized",  # pitch
+        "novelty_short", "novelty_medium", "novelty_long",  # structural
+        "novelty_short_deriv", "novelty_medium_deriv",  # structural derivatives
     })
 
     def sample_at_time(self, t: float, channel: str = "energy_smooth") -> float:
@@ -398,7 +398,7 @@ class StemAnalyzer:
         is_full = self.feature_level == "full"
         is_minimal = self.feature_level == "minimal"
 
-        # Phase 1: Perceptual features (envelope, flux, brightness, flatness, dual-layer)
+        # Perceptual features (envelope, flux, brightness, flatness, dual-layer)
         perceptual = self._extract_perceptual(n_frames, mag_np=mag_np, freqs_np=freqs_np)
 
         # HPSS component time-series (harmonic/percussive energy)
@@ -420,7 +420,7 @@ class StemAnalyzer:
             has_harmonic_content = computed_hpss_ratio < 0.7
             self._log_phase("hpss")
 
-        # Phase 2: Harmonic features (tension, tonal_distance, chroma)
+        # Harmonic features (tension, tonal_distance, chroma)
         harmonic = self._extract_harmonic(
             n_frames,
             has_harmonic_content=has_harmonic_content,
@@ -430,14 +430,14 @@ class StemAnalyzer:
             mag_np=mag_np,
         )
 
-        # Phase 3: Pitch tracking (melodic stems only)
+        # Pitch tracking (melodic stems only)
         pitch = self._extract_pitch(
             n_frames,
             has_harmonic_content=has_harmonic_content,
             is_full=is_full,
         )
 
-        # Phase 4: Structural features (novelty + layer detection)
+        # Structural features (novelty, phrase boundaries, layer entries)
         structure_result = self._extract_structure(
             n_frames,
             is_minimal=is_minimal,
@@ -445,7 +445,7 @@ class StemAnalyzer:
             mag_np=mag_np,
         )
 
-        # Phase 5: Beat tracking (drums only)
+        # Beat tracking (drums only)
         beat = self._extract_beat(
             is_minimal=is_minimal,
             energy_smooth=perceptual["energy_smooth"],
@@ -473,20 +473,20 @@ class StemAnalyzer:
             timestamps=timestamps,
             duration=self.duration,
             fps=self.fps,
-            # HPSS (Phase 1)
+            # HPSS
             hpss_ratio=computed_hpss_ratio,
             harmonic_energy=harmonic_energy,
             percussive_energy=percussive_energy,
-            # Harmonic features (Phase 2)
+            # Harmonic features
             tension=harmonic["tension"],
             tonal_distance=harmonic["tonal_distance"],
             chroma=harmonic["chroma"],
             chroma_centroid=harmonic["chroma_centroid"],
-            # Pitch tracking (Phase 3)
+            # Pitch tracking
             pitch_hz=pitch["pitch_hz"],
             pitch_confidence=pitch["pitch_confidence"],
             pitch_normalized=pitch["pitch_normalized"],
-            # Structural features (Phase 4)
+            # Structural features
             flux_normalized=structure_result.get("flux_normalized"),
             energy_db=structure_result.get("energy_db"),
             novelty_short=structure["novelty_short"] if structure else None,
@@ -495,7 +495,7 @@ class StemAnalyzer:
             novelty_short_deriv=structure["novelty_short_deriv"] if structure else None,
             novelty_medium_deriv=structure["novelty_medium_deriv"] if structure else None,
             layer_entry_mask=structure["layer_entry_mask"] if structure else None,
-            # Beat tracking (Phase 5)
+            # Beat tracking
             beat_frames=beat["beat_frames"],
             tempo=beat["tempo"],
             energy_at_beats=beat["energy_at_beats"],

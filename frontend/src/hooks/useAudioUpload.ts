@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useAudioStore } from '../stores/useAudioStore';
 import { notify } from '../stores/useNotificationStore';
-import { songIntelligenceActions } from '../stores/useSongIntelligenceStore';
+import { useSongIntelligenceStore } from '../stores/useSongIntelligenceStore';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -88,8 +88,8 @@ export function useAudioUpload(options: UseAudioUploadOptions = {}): UseAudioUpl
         // Read filename from store (always fresh, no stale closure)
         const { filename } = useAudioStore.getState();
         setAudioData(audioId, data.stems || [], data.duration || 0, filename ?? undefined);
-        if (!songIntelligenceActions.hydrateFromPayload(audioId, data)) {
-          songIntelligenceActions.clear();
+        if (!useSongIntelligenceStore.getState().hydrateFromPayload(audioId, data)) {
+          useSongIntelligenceStore.getState().clear();
         }
         // Phase transitions to 'loading_stems' when mixer.load() is called
         onAudioReadyRef.current?.(audioId);
@@ -136,7 +136,7 @@ export function useAudioUpload(options: UseAudioUploadOptions = {}): UseAudioUpl
 
     // Immediate feedback before the fetch blocks
     startUpload(file.name);
-    songIntelligenceActions.clear();
+    useSongIntelligenceStore.getState().clear();
 
     try {
       const formData = new FormData();
@@ -165,7 +165,7 @@ export function useAudioUpload(options: UseAudioUploadOptions = {}): UseAudioUpl
 
     // Immediate feedback — show the URL as filename
     startUpload(url);
-    songIntelligenceActions.clear();
+    useSongIntelligenceStore.getState().clear();
     useAudioStore.getState().setUploadStatus('Downloading...', 0);
 
     try {
@@ -189,7 +189,7 @@ export function useAudioUpload(options: UseAudioUploadOptions = {}): UseAudioUpl
   const cancelUpload = useCallback(() => {
     stopPolling();
     useAudioStore.getState().clearAudio();
-    songIntelligenceActions.clear();
+    useSongIntelligenceStore.getState().clear();
   }, [stopPolling]);
 
   return { uploadFile, uploadYoutube, cancelUpload };

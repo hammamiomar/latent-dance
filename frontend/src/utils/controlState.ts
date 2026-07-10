@@ -1,10 +1,16 @@
-import { BLOCK_CONTROL_METADATA, CONTROL_STATE_VERSION } from '../data/controlSurface';
+import {
+  CONTROL_STATE_VERSION,
+  slotControlMetadata,
+  type SlotControlMetadata,
+} from '../data/controlSurface';
 import type { CompositionStateSnapshot } from '../types/composition';
 import type { DestinationState } from '../types/destinations';
-import type { BlockCode, BlockMapping } from '../types/sae';
+import type { SlotMapping } from '../types/sae';
+import type { BackendCapabilities } from '../types/wire/capabilities';
 
 interface BuildControlStateArgs {
-  blockMappings: Record<BlockCode, BlockMapping>;
+  slots: Record<string, SlotMapping>;
+  capabilities: BackendCapabilities | null;
   latent: DestinationState;
   prompt: DestinationState;
   composition: CompositionStateSnapshot;
@@ -30,11 +36,10 @@ function countActiveMaskCells(mask: number[]) {
   return mask.reduce((count, value) => count + (value > 0 ? 1 : 0), 0);
 }
 
-function blockSummary(block: BlockCode, mapping: BlockMapping) {
-  const metadata = BLOCK_CONTROL_METADATA[block];
+function slotSummary(slot: string, mapping: SlotMapping, metadata?: SlotControlMetadata) {
   return {
-    block,
-    label: metadata.label,
+    block: slot,
+    label: metadata?.label ?? slot,
     enabled: mapping.enabled,
     rank: mapping.saeRank,
     link_target: mapping.linkTarget,
@@ -47,15 +52,14 @@ function blockSummary(block: BlockCode, mapping: BlockMapping) {
   };
 }
 
-function blockDetail(block: BlockCode, mapping: BlockMapping) {
-  const metadata = BLOCK_CONTROL_METADATA[block];
+function slotDetail(slot: string, mapping: SlotMapping, metadata?: SlotControlMetadata) {
   return {
     identity: {
-      block,
-      label: metadata.label,
-      description: metadata.description,
-      role: metadata.role,
-      feature_count: metadata.featureCount,
+      block: slot,
+      label: metadata?.label ?? slot,
+      description: metadata?.description ?? '',
+      role: metadata?.role ?? '',
+      feature_count: metadata?.featureCount ?? 0,
     },
     enabled: mapping.enabled,
     rank: mapping.saeRank,
@@ -134,12 +138,14 @@ function compositionDetail(latent: DestinationState, composition: CompositionSta
 }
 
 export function buildControlState({
-  blockMappings,
+  slots,
+  capabilities,
   latent,
   prompt,
   composition,
 }: BuildControlStateArgs) {
-  const entries = Object.entries(blockMappings) as [BlockCode, BlockMapping][];
+  const metadata = slotControlMetadata(capabilities);
+  const entries = Object.entries(slots);
   const promptState = promptDetail(prompt);
   const compositionState = compositionDetail(latent, composition);
 
@@ -147,7 +153,7 @@ export function buildControlState({
     version: CONTROL_STATE_VERSION,
     summary: {
       enabled_block_count: entries.filter(([, mapping]) => mapping.enabled).length,
-      blocks: entries.map(([block, mapping]) => blockSummary(block, mapping)),
+      blocks: entries.map(([slot, mapping]) => slotSummary(slot, mapping, metadata[slot])),
       prompt: {
         mode: promptState.mode,
         ui_mode: promptState.ui_mode,
@@ -166,7 +172,7 @@ export function buildControlState({
       },
     },
     blocks: Object.fromEntries(
-      entries.map(([block, mapping]) => [block, blockDetail(block, mapping)]),
+      entries.map(([slot, mapping]) => [slot, slotDetail(slot, mapping, metadata[slot])]),
     ),
     prompt: promptState,
     composition: compositionState,

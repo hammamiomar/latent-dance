@@ -4,10 +4,13 @@ import {
   validateAgentVisualPlan,
   type AgentPlanValidationContext,
 } from "./agentPlanValidation";
+import saeManifest from "../../../tests/fixtures/capabilities.sae_steering.json";
 
 const validContext: AgentPlanValidationContext = {
   armed: true,
   activeSession: true,
+  // The block whitelist is capability-driven; feed it the golden manifest
+  slotNames: saeManifest.slots.map((slot) => slot.name),
   bridgeConnected: true,
   currentAudioTime: 50,
 };

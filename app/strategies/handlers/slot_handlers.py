@@ -2,8 +2,8 @@
 
 Handles: UpdateSlotConfig (and its legacy alias UpdateBlockConfig).
 One handler serves every backend: it applies the message's non-None
-fields to strategy.slot_configs[slot], which all strategies expose
-(Phase 1 base). Fields a backend doesn't use are stored and ignored.
+fields to strategy.slot_configs[slot], which the strategy base gives
+every backend. Fields a backend doesn't use are stored and ignored.
 """
 
 from __future__ import annotations

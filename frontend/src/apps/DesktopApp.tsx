@@ -14,7 +14,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAppCore } from "../hooks/useAppCore";
+import { useCapabilities } from "../stores/useSessionStore";
 import { Visualizer } from "../components/visualizer/Visualizer";
+import { BackendGate } from "../components/visualizer/BackendGate";
 import { PerfOverlay } from "../components/visualizer/PerfOverlay";
 import { HelpDialog } from "../components/HelpDialog";
 import { CharacterBody } from "../components/character/CharacterBody";
@@ -48,6 +50,7 @@ export function DesktopApp() {
   }, []);
 
   const core = useAppCore(bellySize);
+  const capabilities = useCapabilities();
 
   const handleModeChange = useCallback(
     (mode: BellyMode) => {
@@ -101,11 +104,9 @@ export function DesktopApp() {
         </div>
 
         <BellyScreen onResize={setBellySize}>
-          <Visualizer {...core} />
+          {capabilities ? <Visualizer {...core} /> : <BackendGate />}
 
-          {core.showPerfOverlay && (
-            <PerfOverlay fpsRef={core.fpsRef} driftRef={core.driftRef} perfStats={core.perfStats} />
-          )}
+          {core.showPerfOverlay && <PerfOverlay />}
 
           {staticFlash && (
             <div className="absolute inset-0 z-[10200] mode-transition-static pointer-events-none" />

@@ -1,0 +1,114 @@
+{
+  "mode": "sae_steering",
+  "temporal": "per_frame",
+  "slots": [
+    {
+      "name": "down.2.1",
+      "display_name": "Composition",
+      "short_name": "COMP",
+      "color": "#c45a2a",
+      "description": "Scene structure, mood, intensity"
+    },
+    {
+      "name": "mid.0",
+      "display_name": "Abstract",
+      "short_name": "ABS",
+      "color": "#7a5090",
+      "description": "Global effects, distortion"
+    },
+    {
+      "name": "up.0.0",
+      "display_name": "Details",
+      "short_name": "DET",
+      "color": "#b85a7a",
+      "description": "Expressions, objects"
+    },
+    {
+      "name": "up.0.1",
+      "display_name": "Style",
+      "short_name": "STY",
+      "color": "#5a8a4a",
+      "description": "Patterns, textures"
+    }
+  ],
+  "feature_id_range": [
+    0,
+    5119
+  ],
+  "feature_label": "Feature",
+  "spatial_mask_shape": [
+    16,
+    16
+  ],
+  "has_prompts": true,
+  "has_destinations": true,
+  "output_resolution": [
+    512,
+    512
+  ],
+  "control_inputs": [
+    {
+      "name": "slot.feature",
+      "kind": "id",
+      "count": 4,
+      "id_range": [
+        0,
+        5119
+      ],
+      "shape": null,
+      "description": "SAE feature steered by each slot (decoder column index)"
+    },
+    {
+      "name": "slot.strength",
+      "kind": "scalar",
+      "count": 4,
+      "id_range": null,
+      "shape": null,
+      "description": "Audio-driven steering amplitude per slot"
+    },
+    {
+      "name": "slot.spatial_mask",
+      "kind": "mask2d",
+      "count": 4,
+      "id_range": null,
+      "shape": [
+        16,
+        16
+      ],
+      "description": "Where in the image each slot's feature applies"
+    },
+    {
+      "name": "prompt.destination",
+      "kind": "text",
+      "count": 2,
+      "id_range": null,
+      "shape": null,
+      "description": "Prompt destinations A/B for prompt-space SLERP"
+    },
+    {
+      "name": "prompt.blend",
+      "kind": "scalar",
+      "count": 1,
+      "id_range": null,
+      "shape": null,
+      "description": "SLERP position between prompt destinations"
+    },
+    {
+      "name": "composition.seed",
+      "kind": "id",
+      "count": 2,
+      "id_range": null,
+      "shape": null,
+      "description": "Noise seeds A/B for the composition circular walk"
+    },
+    {
+      "name": "composition.distance",
+      "kind": "scalar",
+      "count": 1,
+      "id_range": null,
+      "shape": null,
+      "description": "Radius of the noise circular walk"
+    }
+  ],
+  "slot_count": 4
+}

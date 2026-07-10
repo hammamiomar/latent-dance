@@ -1,33 +1,45 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useBlockStore } from "../stores/useBlockStore";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { useSlotStore } from "../stores/useSlotStore";
 import { useCompositionStore } from "../stores/useCompositionStore";
 import { useDestinationStore } from "../stores/useDestinationStore";
+import { attachSocket, __resetTransport } from "../lib/transport";
+import { parseBackendCapabilities } from "../types/wire/capabilities";
+import saeManifest from "../../../tests/fixtures/capabilities.sae_steering.json";
 import type { AgentVisualAction } from "../types/agentBridge";
-import { applyAgentVisualAction, type AgentPlanApplySenders } from "./agentPlanApply";
+import { applyAgentVisualAction } from "./agentPlanApply";
 
-function makeSenders() {
-  return {
-    sendUpdateBlockConfig: vi.fn(),
-    sendSetDestination: vi.fn(),
-    sendClearDestination: vi.fn(),
-    sendFreezeBlend: vi.fn(),
-    sendSetBlendPosition: vi.fn(),
-    sendSetDestinationMode: vi.fn(),
-    sendSetReactiveConfig: vi.fn(),
-    sendSetDestinationLink: vi.fn(),
-    sendSetCompositionConfig: vi.fn(),
-  } satisfies AgentPlanApplySenders;
+const SAE_CAPS = parseBackendCapabilities(saeManifest);
+
+/**
+ * Wire messages captured as the backend would receive them: JSON round-trip
+ * through the fake socket, so undefined fields disappear exactly as they do
+ * on the real connection.
+ */
+let sent: Record<string, unknown>[] = [];
+
+function ofAction(action: string) {
+  return sent.filter((message) => message.action === action);
 }
 
 describe("agentPlanApply", () => {
   beforeEach(() => {
-    useBlockStore.getState().resetToDefaults();
+    // Fresh rig exactly the way production gets one: from the manifest
+    useSlotStore.setState({ slots: {}, order: [] });
+    useSlotStore.getState().initFromCapabilities(SAE_CAPS);
     useCompositionStore.getState().reset();
     useDestinationStore.getState().reset();
+    sent = [];
+    attachSocket({
+      readyState: WebSocket.OPEN,
+      send: (raw: string) => sent.push(JSON.parse(raw)),
+    } as unknown as WebSocket);
+  });
+
+  afterEach(() => {
+    __resetTransport();
   });
 
   it("freezes the current backend blend without mutating local destination slots", () => {
-    const senders = makeSenders();
     useDestinationStore.getState().setDestination("prompt", "b", {
       type: "prompt",
       label: "old prompt",
@@ -38,9 +50,9 @@ describe("agentPlanApply", () => {
       action: "freeze_blend",
       space: "prompt",
       target_slot: "b",
-    }, senders);
+    });
 
-    expect(senders.sendFreezeBlend).toHaveBeenCalledWith("prompt", "b");
+    expect(sent).toContainEqual({ action: "freeze_blend", space: "prompt", target_slot: "b" });
     expect(useDestinationStore.getState().prompt.destinationB?.prompt).toBe("old prompt");
     expect(change).toMatchObject({
       action: "freeze_blend",
@@ -49,7 +61,6 @@ describe("agentPlanApply", () => {
   });
 
   it("sets prompt destinations in local state and forwards the backend command", () => {
-    const senders = makeSenders();
     const action = {
       action: "set_destination",
       space: "prompt",
@@ -58,24 +69,25 @@ describe("agentPlanApply", () => {
       prompt: "muscly turtle in neon rain",
     } satisfies AgentVisualAction;
 
-    applyAgentVisualAction(action, senders);
+    applyAgentVisualAction(action);
 
     expect(useDestinationStore.getState().prompt.destinationB).toMatchObject({
       type: "prompt",
       label: "muscly turtle in neo...",
       prompt: "muscly turtle in neon rain",
     });
-    expect(senders.sendSetDestination).toHaveBeenCalledWith(
-      "prompt",
-      "b",
-      "prompt",
-      { seed: undefined, prompt: "muscly turtle in neon rain" },
-      "direct",
-    );
+    // The wire payload has no `seed` key at all — undefined is dropped by JSON
+    expect(ofAction("set_destination")).toEqual([{
+      action: "set_destination",
+      space: "prompt",
+      slot: "b",
+      destination_type: "prompt",
+      prompt: "muscly turtle in neon rain",
+      replace_mode: "direct",
+    }]);
   });
 
   it("can build first latent, prompt, and composition state from empty slots", () => {
-    const senders = makeSenders();
     const actions = [
       {
         action: "set_destination",
@@ -112,7 +124,7 @@ describe("agentPlanApply", () => {
       },
     ] satisfies AgentVisualAction[];
 
-    actions.forEach((action) => applyAgentVisualAction(action, senders));
+    actions.forEach((action) => applyAgentVisualAction(action));
 
     const destinations = useDestinationStore.getState();
     expect(destinations.latent.destinationA?.seed).toBe(11);
@@ -123,15 +135,15 @@ describe("agentPlanApply", () => {
       distance: 0.7,
       mode: "pulse",
     });
-    expect(senders.sendSetDestination).toHaveBeenCalledTimes(4);
-    expect(senders.sendSetCompositionConfig).toHaveBeenCalledWith({
+    expect(ofAction("set_destination")).toHaveLength(4);
+    expect(sent).toContainEqual({
+      action: "set_composition_config",
       distance: 0.7,
       mode: "pulse",
     });
   });
 
   it("updates block config locally and forwards the same control message", () => {
-    const senders = makeSenders();
     const action = {
       action: "update_block_config",
       block: "up.0.1",
@@ -144,9 +156,9 @@ describe("agentPlanApply", () => {
       stage_right: 18,
     } satisfies AgentVisualAction;
 
-    applyAgentVisualAction(action, senders);
+    applyAgentVisualAction(action);
 
-    const block = useBlockStore.getState().blockMappings["up.0.1"];
+    const block = useSlotStore.getState().slots["up.0.1"];
     expect(block.linkTarget).toBe("drums_high");
     expect(block.featureId).toBe(4);
     expect(block.featureLabel).toBe("glittering hi-hat sparks");
@@ -156,14 +168,12 @@ describe("agentPlanApply", () => {
       stageHome: 0,
       strengthMax: 18,
     });
-    expect(senders.sendUpdateBlockConfig).toHaveBeenCalledWith(action);
+    expect(ofAction("update_block_config")).toEqual([action]);
   });
 
   it("keeps a runtime guard for action types that bypass validation", () => {
-    const senders = makeSenders();
-
     expect(() => applyAgentVisualAction({
       action: "unknown_action",
-    } as unknown as AgentVisualAction, senders)).toThrow("Unsupported agent action");
+    } as unknown as AgentVisualAction)).toThrow("Unsupported agent action");
   });
 });

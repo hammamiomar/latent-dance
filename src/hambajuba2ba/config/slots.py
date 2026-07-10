@@ -4,8 +4,8 @@ A slot binds one audio-derived signal to one backend control input:
 SAE blocks today, RA-SAE concept slots and dinoDreamer objective terms
 tomorrow (see app/backends.py for the control-input manifest side).
 Historically this lived in audio/focus_config.py with SAE naming; the
-class is still called BlockLinkConfig and its id field `block` until the
-Phase 4 frontend unification renames the wire vocabulary.
+class is still called BlockLinkConfig and its id field `block`, while
+the wire speaks `slot` (with `block` accepted as the legacy alias).
 
 When auto_config=True on a BlockLinkConfig, the system derives:
 - Channel: transient vs energy_smooth based on percussive confidence

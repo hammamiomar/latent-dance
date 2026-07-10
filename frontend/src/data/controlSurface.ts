@@ -1,4 +1,3 @@
-import { BLOCKS } from './features';
 import {
   DERIVED_TARGETS,
   HPSS_TARGETS,
@@ -6,9 +5,10 @@ import {
   RANK_DESCRIPTIONS,
   SUBBAND_TARGETS,
   DEFAULT_STRENGTH_RANGE,
-  type BlockCode,
 } from '../types/sae';
 import { DEFAULT_REACTIVE_CONFIG, DEFAULT_STEM_RANKINGS } from '../types/destinations';
+import { SLOT_SEEDS } from '../stores/useSlotStore';
+import type { BackendCapabilities } from '../types/wire/capabilities';
 import {
   INTENSITY_CURVE_OPTIONS,
   INTENSITY_SOURCE_OPTIONS,
@@ -19,111 +19,78 @@ import {
 export const CONTROL_STATE_VERSION = 'hamba-control-state/v1';
 export const CONTROL_SURFACE_VERSION = 'hamba-control-surface/v1';
 
-export const BLOCK_CONTROL_METADATA: Record<BlockCode, {
+/**
+ * SAE planning hints for Hermes — frozen agent-dialect prose keyed by slot
+ * name. Richer than the manifest's one-line descriptions; only the SAE
+ * backend has them (Hermes drives SAE only today). Slots without a hint
+ * fall back to their manifest description.
+ */
+const SAE_SLOT_ROLES: Record<string, string> = {
+  'down.2.1': 'composition, scene, mood, character, global visual world',
+  'mid.0': 'abstract structure, spatial layout, density, contrast, symmetry, depth',
+  'up.0.0': 'local detail, object details, faces, body parts, accessories, edges',
+  'up.0.1': 'style, texture, pattern, lighting, material, color palette',
+};
+
+export interface SlotControlMetadata {
   label: string;
   description: string;
   role: string;
   featureCount: number;
-}> = {
-  'down.2.1': {
-    label: BLOCKS['down.2.1'].name,
-    description: BLOCKS['down.2.1'].description,
-    role: 'composition, scene, mood, character, global visual world',
-    featureCount: 5120,
-  },
-  'mid.0': {
-    label: BLOCKS['mid.0'].name,
-    description: BLOCKS['mid.0'].description,
-    role: 'abstract structure, spatial layout, density, contrast, symmetry, depth',
-    featureCount: 5120,
-  },
-  'up.0.0': {
-    label: BLOCKS['up.0.0'].name,
-    description: BLOCKS['up.0.0'].description,
-    role: 'local detail, object details, faces, body parts, accessories, edges',
-    featureCount: 5120,
-  },
-  'up.0.1': {
-    label: BLOCKS['up.0.1'].name,
-    description: BLOCKS['up.0.1'].description,
-    role: 'style, texture, pattern, lighting, material, color palette',
-    featureCount: 5120,
-  },
-};
+}
 
-const DEFAULT_BLOCK_SURFACE: Record<BlockCode, {
-  enabled: boolean;
-  link_target: string;
-  sae_rank: number | null;
-  intensity_source: string;
-  intensity_curve: string;
-  intensity_gamma: number;
-  strength_min: number;
-  stage_home: number;
-  strength_max: number;
-  spatial_mode: string;
-  spatial_mask: string;
-  auto_config: boolean;
-}> = {
-  'down.2.1': {
-    enabled: false,
-    link_target: 'bass',
-    sae_rank: 1,
-    intensity_source: 'energy_smooth',
-    intensity_curve: 'linear',
-    intensity_gamma: 1,
-    strength_min: DEFAULT_STRENGTH_RANGE.strengthMin,
-    stage_home: DEFAULT_STRENGTH_RANGE.stageHome,
-    strength_max: DEFAULT_STRENGTH_RANGE.strengthMax,
-    spatial_mode: 'draw',
-    spatial_mask: 'full 16x16 mask',
-    auto_config: true,
-  },
-  'mid.0': {
-    enabled: false,
-    link_target: 'vocals',
-    sae_rank: 2,
-    intensity_source: 'energy_smooth',
-    intensity_curve: 'linear',
-    intensity_gamma: 1,
-    strength_min: DEFAULT_STRENGTH_RANGE.strengthMin,
-    stage_home: DEFAULT_STRENGTH_RANGE.stageHome,
-    strength_max: DEFAULT_STRENGTH_RANGE.strengthMax,
-    spatial_mode: 'draw',
-    spatial_mask: 'full 16x16 mask',
-    auto_config: true,
-  },
-  'up.0.0': {
-    enabled: false,
-    link_target: 'drums',
-    sae_rank: 1,
-    intensity_source: 'transient',
-    intensity_curve: 'linear',
-    intensity_gamma: 1,
-    strength_min: DEFAULT_STRENGTH_RANGE.strengthMin,
-    stage_home: DEFAULT_STRENGTH_RANGE.stageHome,
-    strength_max: DEFAULT_STRENGTH_RANGE.strengthMax,
-    spatial_mode: 'draw',
-    spatial_mask: 'full 16x16 mask',
-    auto_config: true,
-  },
-  'up.0.1': {
-    enabled: false,
-    link_target: 'other_high',
-    sae_rank: null,
-    intensity_source: 'energy_smooth',
-    intensity_curve: 'linear',
-    intensity_gamma: 1,
-    strength_min: DEFAULT_STRENGTH_RANGE.strengthMin,
-    stage_home: DEFAULT_STRENGTH_RANGE.stageHome,
-    strength_max: DEFAULT_STRENGTH_RANGE.strengthMax,
-    spatial_mode: 'draw',
-    spatial_mask: 'full 16x16 mask',
-    auto_config: true,
-  },
-};
+/** Display + planning metadata per slot, derived from the manifest. */
+export function slotControlMetadata(
+  capabilities: BackendCapabilities | null,
+): Record<string, SlotControlMetadata> {
+  if (!capabilities) return {};
+  const [idMin, idMax] = capabilities.feature_id_range;
+  const featureCount = idMax - idMin + 1;
+  return Object.fromEntries(
+    capabilities.slots.map((slot) => [
+      slot.name,
+      {
+        label: slot.display_name,
+        description: slot.description,
+        role: SAE_SLOT_ROLES[slot.name] ?? slot.description,
+        featureCount,
+      },
+    ]),
+  );
+}
 
-export function buildControlSurface() {
+/** Blank-start slot defaults — the same index-cycled seeds the store uses. */
+function defaultSlotSurface(capabilities: BackendCapabilities) {
+  const [maskH, maskW] = capabilities.spatial_mask_shape;
+  return Object.fromEntries(
+    capabilities.slots.map((slot, i) => {
+      const seed = SLOT_SEEDS[i % SLOT_SEEDS.length];
+      return [
+        slot.name,
+        {
+          enabled: false,
+          link_target: seed.linkTarget,
+          sae_rank: seed.saeRank,
+          intensity_source: seed.intensitySource,
+          intensity_curve: 'linear',
+          intensity_gamma: 1,
+          strength_min: DEFAULT_STRENGTH_RANGE.strengthMin,
+          stage_home: DEFAULT_STRENGTH_RANGE.stageHome,
+          strength_max: DEFAULT_STRENGTH_RANGE.strengthMax,
+          spatial_mode: 'draw',
+          spatial_mask: `full ${maskH}x${maskW} mask`,
+          auto_config: true,
+        },
+      ];
+    }),
+  );
+}
+
+export function buildControlSurface(capabilities: BackendCapabilities | null) {
+  const [idMin, idMax] = capabilities?.feature_id_range ?? [0, 0];
+  const [maskH, maskW] = capabilities?.spatial_mask_shape ?? [16, 16];
+  const metadata = slotControlMetadata(capabilities);
+
   return {
     version: CONTROL_SURFACE_VERSION,
     state_contract: {
@@ -145,7 +112,7 @@ export function buildControlSurface() {
           'If no song analysis exists, say that the song has not exposed DSP evidence yet and build a conservative starter rig only from user intent/control defaults.',
         ],
       },
-      blocks: DEFAULT_BLOCK_SURFACE,
+      blocks: capabilities ? defaultSlotSurface(capabilities) : {},
       prompt: {
         mode: 'reactive',
         ui_mode: 'GLOBAL',
@@ -175,15 +142,15 @@ export function buildControlSurface() {
       },
     },
     blocks: Object.fromEntries(
-      Object.entries(BLOCK_CONTROL_METADATA).map(([block, metadata]) => [
-        block,
+      Object.entries(metadata).map(([slot, meta]) => [
+        slot,
         {
-          ...metadata,
+          ...meta,
           runtime_model: 'sae_min_max_strength',
           parameters: {
             enabled: 'turn SAE steering for this block on/off',
             link_target: 'audio source that drives this block',
-            feature_id: 'numeric SAE feature id in [0, 5119]',
+            feature_id: `numeric SAE feature id in [${idMin}, ${idMax}]`,
             feature_label: 'frontend/operator label; backend receives the numeric id',
             sae_rank: {
               1: RANK_DESCRIPTIONS[1],
@@ -196,10 +163,10 @@ export function buildControlSurface() {
             strength_max: 'SAE strength when block physics is 1',
             stage_home: 'stored for SAE blocks, but not used by current SAE runtime',
             spatial_mode: {
-              draw: 'use the 16x16 spatial mask',
+              draw: `use the ${maskH}x${maskW} spatial mask`,
               pitch_aligned: 'derive spatial placement from pitch',
             },
-            spatial_mask: '256 values for the 16x16 draw mask',
+            spatial_mask: `${maskH * maskW} values for the ${maskH}x${maskW} draw mask`,
             intensity_source: Object.fromEntries(
               INTENSITY_SOURCE_OPTIONS.map((option) => [option.value, option.description]),
             ),

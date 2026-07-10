@@ -1,4 +1,4 @@
-"""Tests for the device policy module (Phase 5).
+"""Tests for the device policy module.
 
 hambajuba2ba.device is the single home for device-conditional decisions.
 These tests pin the dispatch table, prove configure_backend touches the

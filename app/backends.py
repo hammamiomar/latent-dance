@@ -7,11 +7,8 @@ here. Adding a backend = one pipeline class + one strategy subclass + one
 register_backend() call. Nothing else in the app should know mode names.
 
 Capabilities are a control-input manifest first, UI hints second: the
-frontend renders whatever the manifest declares (Phase 4), and the routing
-layer only binds signals to inputs that exist.
-
-Design doc: notes/design_docs/MULTI_BACKEND_SPEC.md (Phase 2) plus the
-signal-contract note in notes/design_docs/PREFLIGHT_PLAN.md.
+frontend renders whatever the manifest declares, and the routing layer
+only binds signals to inputs that exist.
 """
 
 from __future__ import annotations
@@ -144,8 +141,8 @@ def get_backend(mode: str) -> BackendSpec:
 # Built-in backends
 # ---------------------------------------------------------------------------
 
-# SAE slot display data mirrors frontend/src/data/features.ts (BLOCKS,
-# BLOCK_NAMES, BLOCK_COLORS) — one source of truth once Phase 4 reads this.
+# Slot display data (names, colors, descriptions): the manifest is the
+# single source of truth — the frontend renders these verbatim.
 _SAE_SLOTS = (
     SlotInfo("down.2.1", "Composition", "COMP", "#c45a2a", "Scene structure, mood, intensity"),
     SlotInfo("mid.0", "Abstract", "ABS", "#7a5090", "Global effects, distortion"),
@@ -202,6 +199,7 @@ def _register_builtin_backends() -> None:
     # Imports are function-local: the strategy/pipeline chain pulls in torch
     # and diffusers, and keeping it here avoids import cycles with
     # app.strategies (which looks backends up lazily inside create_strategy).
+    from app.mock_backend import MOCK_CAPABILITIES, MockPipeline, MockStrategy
     from app.strategies.sae_steering_strategy import SAESteeringStrategy
     from hambajuba2ba.generation.pipeline import SAESteerablePipeline
 
@@ -212,6 +210,16 @@ def _register_builtin_backends() -> None:
             pipeline_factory=SAESteerablePipeline,
             strategy_class=SAESteeringStrategy,
             capabilities=SAE_CAPABILITIES,
+        )
+    )
+
+    register_backend(
+        BackendSpec(
+            mode="mock",
+            mode_label="Mock (synthetic frames, no GPU/weights)",
+            pipeline_factory=MockPipeline,
+            strategy_class=MockStrategy,
+            capabilities=MOCK_CAPABILITIES,
         )
     )
 

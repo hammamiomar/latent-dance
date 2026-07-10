@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import "../brain.css";
 import { SHELL_BRIDGE_PORT } from "../constants";
 import type { AgentEvent, AgentPhase, AgentStateResponse } from "../types/agent";
 import {

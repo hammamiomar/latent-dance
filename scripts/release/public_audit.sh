@@ -1,5 +1,6 @@
 #!/bin/bash
-# Public tree sanity checks. Run from repo root.
+# Public tree sanity checks. Run from the PUBLIC worktree root — it audits
+# the current directory (the sync script invokes it there automatically).
 set -euo pipefail
 
 fail=0
@@ -36,7 +37,7 @@ if [ -e skills/creative/hambajuba-dance-director/SKILL.md ] || [ -e src/hambajub
   fi
 fi
 
-if git grep --untracked -n -I -E '/Users/omarhammami|RunPod|root@|id_ed25519|GITHUB_PAT|OPENROUTER_API_KEY=.*' -- . ':!scripts/release/public_audit.sh'; then
+if git grep --untracked -n -I -E '/Users/|RunPod|root@|id_ed25519|GITHUB_PAT|OPENROUTER_API_KEY=.*' -- . ':!scripts/release/public_audit.sh'; then
   echo 'FAIL: found private deployment/local path marker' >&2
   fail=1
 fi

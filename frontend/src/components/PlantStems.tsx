@@ -1,20 +1,22 @@
 /**
- * PlantStems - Block-Centric Waveform Stem Visualization
+ * PlantStems - Slot-Centric Waveform Stem Visualization
  *
- * Each BLOCK ORB gets its own stem/tendril that reacts to
- * whatever audio stem is assigned to that block.
- *
- * Example: If block "down.2.1" has "drums" assigned, the tendril
- * from that orb reacts to drums audio data.
+ * Each SLOT ORB gets its own stem/tendril that reacts to whatever audio
+ * target is linked to that slot. Tendril i belongs to slot order[i] — the
+ * same index-identity the physics bodies and orb renderers use. The rAF
+ * loop reads the slot/session/destination stores imperatively, so this
+ * component needs no config props and never re-renders with the music.
  */
 
 import { useRef, useEffect, useCallback } from 'react';
 import { createNoise3D } from 'simplex-noise';
 import { useAudioActivityStore } from '../stores/useAudioActivityStore';
 import { useDestinationStore } from '../stores/useDestinationStore';
-import type { BlockCode, BlockMapping, StemChannelData, LinkTarget } from '../types/sae';
+import { useSlotStore } from '../stores/useSlotStore';
+import { useSessionStore } from '../stores/useSessionStore';
+import { physicalStemOf } from '../lib/orbRenderData';
+import type { StemChannelData } from '../types/sae';
 import type Matter from 'matter-js';
-import { BLOCK_COLORS, STEM_COLORS as STEM_COLORS_HEX } from '../data/features';
 
 const noise3D = createNoise3D();
 
@@ -28,18 +30,12 @@ interface Position {
 }
 
 interface PlantStemsProps {
-  /** Block mappings - tells us which stem each block uses */
-  blockMappings: Record<BlockCode, BlockMapping>;
-  /** Matter.js bodies for block orbs */
+  /** Matter.js bodies for slot orbs (index-aligned with the slot order) */
   stemOrbBodies: Matter.Body[];
   /** Matter.js bodies for destination orbs (latent/prompt) */
   destinationOrbBodies: Matter.Body[];
   /** Matter.js body for heart (read position live in animation loop) */
   heartBody: Matter.Body;
-  /** Whether latent destinations are configured */
-  latentConfigured: boolean;
-  /** Whether prompt destinations are configured */
-  promptConfigured: boolean;
   /** Canvas width */
   width: number;
   /** Canvas height */
@@ -50,21 +46,14 @@ interface PlantStemsProps {
 // Constants
 // ============================================================================
 
-/** Block order matches the orb body array */
-const BLOCK_ORDER: BlockCode[] = ['down.2.1', 'mid.0', 'up.0.0', 'up.0.1'];
-
 /** Convert hex color string to RGB components */
 function hexToRgbObj(hex: string): { r: number; g: number; b: number } {
   const n = parseInt(hex.slice(1), 16);
   return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
 }
 
-/** Colors by physical stem — derived from hex source of truth in features.ts */
-const STEM_COLORS: Record<string, { r: number; g: number; b: number }> = {
-  ...Object.fromEntries(
-    Object.entries(STEM_COLORS_HEX).map(([k, v]) => [k, hexToRgbObj(v)])
-  ),
-  // Destination colors (not in features.ts)
+/** Destination tendril colors (violet latent / amber prompt) */
+const DESTINATION_COLORS = {
   latent: { r: 138, g: 106, b: 170 },
   prompt: { r: 170, g: 138, b: 106 },
 };
@@ -80,18 +69,6 @@ interface Pulse {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/** Get physical stem from link target (drums_harmonic → drums) */
-function getPhysicalStem(linkTarget: LinkTarget | undefined): string {
-  if (!linkTarget) return 'other';
-  // Derived targets
-  if (linkTarget === 'tension' || linkTarget === 'global') return 'other';
-  // Extract base stem from compound names
-  for (const base of ['drums', 'vocals', 'bass', 'other']) {
-    if (linkTarget.startsWith(base)) return base;
-  }
-  return 'other';
-}
 
 /** Cubic bezier stem path: drops straight down from flower, curves to heart */
 function interpolateStemPath(flower: Position, heart: Position, segments: number): Position[] {
@@ -159,12 +136,9 @@ function drawSmoothPath(ctx: CanvasRenderingContext2D, points: Position[]): void
 // ============================================================================
 
 export function PlantStems({
-  blockMappings,
   stemOrbBodies,
   destinationOrbBodies,
   heartBody,
-  latentConfigured,
-  promptConfigured,
   width,
   height,
 }: PlantStemsProps) {
@@ -172,25 +146,10 @@ export function PlantStems({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const animationRef = useRef<number>(0);
 
-  // Refs for props that change frequently — read imperatively in rAF loop
-  const blockMappingsRef = useRef(blockMappings);
-  const latentConfiguredRef = useRef(latentConfigured);
-  const promptConfiguredRef = useRef(promptConfigured);
-  useEffect(() => { blockMappingsRef.current = blockMappings; }, [blockMappings]);
-  useEffect(() => { latentConfiguredRef.current = latentConfigured; }, [latentConfigured]);
-  useEffect(() => { promptConfiguredRef.current = promptConfigured; }, [promptConfigured]);
+  // Track pulses per slot + destinations (arrays created lazily per key)
+  const pulsesRef = useRef<Record<string, Pulse[]>>({});
 
-  // Track pulses per block + destinations
-  const pulsesRef = useRef<Record<string, Pulse[]>>({
-    'down.2.1': [],
-    'mid.0': [],
-    'up.0.0': [],
-    'up.0.1': [],
-    'latent': [],
-    'prompt': [],
-  });
-
-  // Track opacity per block for smooth fade in/out on toggle
+  // Track opacity per slot for smooth fade in/out on toggle
   const opacityRef = useRef<Record<string, number>>({});
 
   // Animation loop — reads props from refs to avoid callback recreation
@@ -213,21 +172,24 @@ export function PlantStems({
 
     // Get current audio data
     const audioStems = useAudioActivityStore.getState().stems;
-    const blockActivity = useAudioActivityStore.getState().blocks;
+    const slotActivity = useAudioActivityStore.getState().blocks;
     const time = performance.now() / 1000;
 
     // Read heart position LIVE from Matter.js body (not from closure)
     const heartPosition = heartBody?.position || { x: width / 2, y: height / 2 };
 
-    // Read props from refs (imperative, no dependency chain)
-    const mappings = blockMappingsRef.current;
+    // Read slot config + manifest colors imperatively — always fresh, no
+    // prop/ref mirroring. order[i] names the slot for body i, and the
+    // manifest's slots[i] carries its color (same order by construction).
+    const { slots, order } = useSlotStore.getState();
+    const slotInfos = useSessionStore.getState().capabilities?.slots;
 
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // Draw stem for each block (with smooth opacity transitions on toggle)
-    BLOCK_ORDER.forEach((blockCode, index) => {
-      const mapping = mappings[blockCode];
+    // Draw stem for each slot (with smooth opacity transitions on toggle)
+    order.forEach((slotName, index) => {
+      const mapping = slots[slotName];
       if (!mapping) return;
 
       const body = stemOrbBodies[index];
@@ -235,10 +197,10 @@ export function PlantStems({
 
       // Smooth opacity transition (fade in/out on enable/disable)
       const targetOpacity = mapping.enabled ? 1.0 : 0.0;
-      const currentOpacity = opacityRef.current[blockCode] ?? 0.0;
+      const currentOpacity = opacityRef.current[slotName] ?? 0.0;
       const fadeSpeed = targetOpacity > currentOpacity ? 0.08 : 0.04;
       const newOpacity = currentOpacity + (targetOpacity - currentOpacity) * fadeSpeed;
-      opacityRef.current[blockCode] = newOpacity;
+      opacityRef.current[slotName] = newOpacity;
 
       // Skip drawing if fully invisible
       if (newOpacity < 0.01) return;
@@ -247,14 +209,13 @@ export function PlantStems({
       // Offset downward by the orb radius so it emerges from the base.
       const flowerPos = { x: body.position.x, y: body.position.y + 28 };
       const linkTarget = mapping.linkTarget;
-      const physicalStem = getPhysicalStem(linkTarget);
 
       // Get audio data for the link target
       const audioData = audioStems[linkTarget as keyof typeof audioStems]
-        || audioStems[physicalStem as keyof typeof audioStems];
+        || audioStems[physicalStemOf(linkTarget)];
 
-      const blockHex = BLOCK_COLORS[blockCode] || '#888888';
-      const color = hexToRgbObj(blockHex);
+      const color = hexToRgbObj(slotInfos?.[index]?.color ?? '#888888');
+      const pulses = (pulsesRef.current[slotName] ??= []);
 
       // Draw with opacity
       ctx.save();
@@ -266,9 +227,9 @@ export function PlantStems({
         heartPosition,
         color,
         audioData,
-        blockActivity?.[blockCode]?.physics,
+        slotActivity?.[slotName]?.physics,
         time,
-        pulsesRef.current[blockCode],
+        pulses,
         index * 7.3  // unique noise seed per stem
       );
 
@@ -276,14 +237,12 @@ export function PlantStems({
 
       // Trigger pulses on transients (only when visible enough)
       if (newOpacity > 0.5 && audioData && audioData.flash > 0.5) {
-        const pulses = pulsesRef.current[blockCode];
         if (pulses.length === 0 || pulses[pulses.length - 1].progress > 0.15) {
           pulses.push({ progress: 0, intensity: audioData.flash });
         }
       }
 
       // Update pulses
-      const pulses = pulsesRef.current[blockCode];
       for (let i = pulses.length - 1; i >= 0; i--) {
         pulses[i].progress += 0.025;
         pulses[i].intensity *= 0.97;
@@ -293,21 +252,20 @@ export function PlantStems({
       }
     });
 
-    // Draw destination stems (read configured state from refs)
-    if (latentConfiguredRef.current) {
-      const latentBlend = useDestinationStore.getState().latent.blendPosition;
+    // Draw destination stems (configured = both anchors set)
+    const destinations = useDestinationStore.getState();
+    if (destinations.latent.destinationA !== null && destinations.latent.destinationB !== null) {
       const latentBody = destinationOrbBodies[0];
       if (latentBody) {
         const latentBase = { x: latentBody.position.x, y: latentBody.position.y + 28 };
-        drawDestinationStem(ctx, latentBase, heartPosition, STEM_COLORS.latent, latentBlend, time);
+        drawDestinationStem(ctx, latentBase, heartPosition, DESTINATION_COLORS.latent, destinations.latent.blendPosition, time);
       }
     }
-    if (promptConfiguredRef.current) {
-      const promptBlend = useDestinationStore.getState().prompt.blendPosition;
+    if (destinations.prompt.destinationA !== null && destinations.prompt.destinationB !== null) {
       const promptBody = destinationOrbBodies[1];
       if (promptBody) {
         const promptBase = { x: promptBody.position.x, y: promptBody.position.y + 28 };
-        drawDestinationStem(ctx, promptBase, heartPosition, STEM_COLORS.prompt, promptBlend, time);
+        drawDestinationStem(ctx, promptBase, heartPosition, DESTINATION_COLORS.prompt, destinations.prompt.blendPosition, time);
       }
     }
 

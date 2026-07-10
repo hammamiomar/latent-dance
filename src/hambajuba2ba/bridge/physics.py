@@ -211,9 +211,9 @@ class SteeringPhysics:
 # where the mass-spring-damper would settle to equilibrium. They provide
 # continuous motion that never settles while maintaining organic feel.
 #
-# Wired in Phase 5 (Physics Integration):
+# How these wire into the runtime:
 # - PhysicsManager uses BlendedPhysics for stems with ComponentClassification
-# - PitchFollowingPhysics receives pitch_hz from Phase 3 pitch tracking
+# - PitchFollowingPhysics receives pitch_hz from the pitch tracker
 # - CoupledOscillatorPhysics/PerlinDriftPhysics receive energy from audio
 # - Chord changes inject impulses via inject_impulse()
 #
@@ -288,7 +288,7 @@ class PitchFollowingPhysics(SustainedPhysicsBase):
     interpolates toward the target. Confidence gates the tracking
     to avoid jumps during unvoiced segments.
 
-    Receives pitch_hz and pitch_confidence from Phase 3 pitch tracking
+    Receives pitch_hz and pitch_confidence from the pitch tracker
     via BlendedPhysics.step().
 
     Motion character:
@@ -662,7 +662,7 @@ def create_physics_from_classification(
     an appropriately-weighted BlendedPhysics instance.
 
     Called by PhysicsManager.initialize() for each stem that has
-    a classification (stems with HPSS data from Phase 1).
+    a classification (stems with HPSS data).
 
     Args:
         classification: Audio component classification with texture/role/range

@@ -15,7 +15,7 @@
 import { useRef, useCallback, type MutableRefObject } from "react";
 import { useAudioActivityStore } from "../stores/useAudioActivityStore";
 import { useAgentStore } from "../stores/useAgentStore";
-import { useBlockStore } from "../stores/useBlockStore";
+import { useSessionStore } from "../stores/useSessionStore";
 import { petBridge } from "../shared/petBridge";
 
 // =============================================================================
@@ -480,7 +480,7 @@ function tickListening(r: FaceRefs, dt: number): FaceState {
 
 /** BOBBING — BPM-driven figure-8 head bob. The primary dance motion. */
 function tickBobbing(r: FaceRefs): FaceState {
-  const bpm = useBlockStore.getState().trackInfo?.bpm ?? 120;
+  const bpm = useSessionStore.getState().trackInfo?.bpm ?? 120;
   const audioTime = useAudioActivityStore.getState().audioTime;
   const phase = audioTime * (bpm / 60) * Math.PI * 2;
 
@@ -551,7 +551,7 @@ function tickSwaying(r: FaceRefs, dt: number): FaceState {
 
 /** ECSTATIC — Go wild. The drop. Everything maxed. */
 function tickEcstatic(r: FaceRefs, dt: number): FaceState {
-  const bpm = useBlockStore.getState().trackInfo?.bpm ?? 120;
+  const bpm = useSessionStore.getState().trackInfo?.bpm ?? 120;
   const audioTime = useAudioActivityStore.getState().audioTime;
   const phase = audioTime * (bpm / 60) * Math.PI * 2;
 

@@ -59,15 +59,18 @@ class TestAudioPipeline:
 
         assert len(features) == 4
 
-    def test_pipeline_handles_silence(self, tmp_path):
-        """Pipeline should handle silent audio.
+    def test_pipeline_handles_near_silence(self, tmp_path):
+        """Near-silent audio should produce finite features, not NaN.
 
-        Silent audio should still produce valid (zero) features
-        rather than crashing or producing NaN.
+        Feature extraction normalizes against total energy, so an input at
+        the noise floor (-60 dBFS) exercises every divide-by-tiny path.
+        Digitally pure silence is not the interesting case: the separator
+        rejects all-zero audio as invalid before DSP ever runs.
         """
         sr = 44100
         duration = 1.0
-        audio = np.zeros(int(sr * duration), dtype=np.float32)
+        rng = np.random.default_rng(seed=0)
+        audio = rng.uniform(-1e-3, 1e-3, int(sr * duration)).astype(np.float32)
 
         audio_path = tmp_path / "silence.wav"
         sf.write(str(audio_path), audio, sr)

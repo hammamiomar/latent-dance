@@ -6,20 +6,23 @@ function getBrowserLocation() {
   return typeof window === "undefined" ? null : window.location;
 }
 
-const getWsUrl = () => {
+/**
+ * Streaming endpoint for a backend mode (from the capabilities manifest).
+ * The server rejects mode mismatches, so this is only called once the
+ * manifest is known — there is no hardcoded default mode.
+ */
+export function getWsUrl(mode: string): string {
+  const path = `/ws/stream/${mode}`;
   const location = getBrowserLocation();
-  if (!location) return "ws://localhost/ws/stream/sae_steering";
+  if (!location) return `ws://localhost${path}`;
 
   // In development, use relative URL (Vite proxy handles it)
   // In production, use the same host as the page
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const host = location.host;
-  return `${protocol}//${host}/ws/stream/sae_steering`;
-};
+  return `${protocol}//${location.host}${path}`;
+}
 
 export const WS_CONFIG = {
-  // SAE steering endpoint - uses proxy in dev, same host in prod
-  URL: getWsUrl(),
   RECONNECT_DELAY: 2000, // in ms
   MAX_RECONNECT_ATTEMPTS: 3, // Reduced to avoid spam
 } as const;

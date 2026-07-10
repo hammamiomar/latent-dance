@@ -7,7 +7,9 @@
 
 import { useState, useEffect } from "react";
 import { useAppCore } from "../hooks/useAppCore";
+import { useCapabilities } from "../stores/useSessionStore";
 import { Visualizer } from "../components/visualizer/Visualizer";
+import { BackendGate } from "../components/visualizer/BackendGate";
 import { PerfOverlay } from "../components/visualizer/PerfOverlay";
 import { FxPanel } from "../components/visualizer/FxPanel";
 import { HelpDialog } from "../components/HelpDialog";
@@ -30,13 +32,12 @@ export function BrowserApp() {
   }, []);
 
   const core = useAppCore(dimensions);
+  const capabilities = useCapabilities();
 
   return (
     <div className="w-screen h-screen bg-void-abyss overflow-hidden relative">
-      <Visualizer {...core} />
-      {core.showPerfOverlay && (
-        <PerfOverlay fpsRef={core.fpsRef} driftRef={core.driftRef} perfStats={core.perfStats} />
-      )}
+      {capabilities ? <Visualizer {...core} /> : <BackendGate />}
+      {core.showPerfOverlay && <PerfOverlay />}
       <FxPanel />
       <HelpDialog isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>

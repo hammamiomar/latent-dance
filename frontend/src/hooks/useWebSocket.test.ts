@@ -1,9 +1,8 @@
 /**
- * Tests for useWebSocket hook - sync messaging
+ * Binary demux contracts for the streaming connection.
  *
- * Note: Full WebSocket integration tests require complex event simulation.
- * These tests focus on message format contracts.
- * See syncRobustness.test.ts for comprehensive unit tests of sync logic.
+ * Outbound message formats are covered by lib/wire.test.ts (the real send
+ * functions); sync logic by syncRobustness.test.ts.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -49,101 +48,6 @@ function packCurves(entries: Array<[string, number[]]>): ArrayBuffer {
 }
 
 describe('useWebSocket - Message Contracts', () => {
-  describe('Audio sync message formats', () => {
-    it('should format audio_timeupdate message correctly', () => {
-      const time = 42.5;
-      const message = JSON.stringify({
-        action: 'audio_timeupdate',
-        time,
-      });
-
-      const parsed = JSON.parse(message);
-      expect(parsed.action).toBe('audio_timeupdate');
-      expect(parsed.time).toBe(42.5);
-    });
-
-    it('should format audio_play message correctly', () => {
-      const time = 10.0;
-      const message = JSON.stringify({
-        action: 'audio_play',
-        time,
-      });
-
-      const parsed = JSON.parse(message);
-      expect(parsed.action).toBe('audio_play');
-      expect(parsed.time).toBe(10.0);
-    });
-
-    it('should format audio_pause message correctly', () => {
-      const message = JSON.stringify({
-        action: 'audio_pause',
-      });
-
-      const parsed = JSON.parse(message);
-      expect(parsed.action).toBe('audio_pause');
-    });
-
-    it('should format audio_seek message correctly', () => {
-      const time = 90.0;
-      const message = JSON.stringify({
-        action: 'audio_seek',
-        time,
-      });
-
-      const parsed = JSON.parse(message);
-      expect(parsed.action).toBe('audio_seek');
-      expect(parsed.time).toBe(90.0);
-    });
-  });
-
-  describe('Destination message formats', () => {
-    it('should format clear_destination message correctly', () => {
-      const message = JSON.stringify({
-        action: 'clear_destination',
-        space: 'prompt',
-        slot: 'b',
-      });
-
-      const parsed = JSON.parse(message);
-      expect(parsed.action).toBe('clear_destination');
-      expect(parsed.space).toBe('prompt');
-      expect(parsed.slot).toBe('b');
-    });
-  });
-
-  describe('Extended activity message parsing', () => {
-    it('should parse extended_activity message with stems and prominence', () => {
-      const serverMessage = {
-        type: 'extended_activity',
-        audio_time: 42.5,
-        stems: {
-          drums: { envelope: 0.8, flash: 0.6, sustain: 0.4 },
-          bass: { envelope: 0.5, flash: 0.3, sustain: 0.7 },
-        },
-        prominence: {
-          drums: { prominence: 0.85, surprise_active: false, rank: 1 },
-          bass: { prominence: 0.6, surprise_active: true, rank: 2 },
-        },
-      };
-
-      expect(serverMessage.audio_time).toBe(42.5);
-      expect(serverMessage.stems.drums.envelope).toBe(0.8);
-      expect(serverMessage.prominence?.drums.prominence).toBe(0.85);
-      expect(serverMessage.prominence?.bass.surprise_active).toBe(true);
-    });
-
-    it('should include audioTime for drift detection', () => {
-      const serverMessage = {
-        type: 'extended_activity',
-        audio_time: 100.0,
-        stems: {},
-      };
-
-      expect(serverMessage.audio_time).toBe(100.0);
-      expect(typeof serverMessage.audio_time).toBe('number');
-    });
-  });
-
   describe('Binary demux', () => {
     it('should route explicit JPEG payloads to frame handling without the header byte', () => {
       const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xdb]);

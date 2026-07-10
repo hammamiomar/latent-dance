@@ -1,0 +1,104 @@
+{
+  "mode": "mock",
+  "temporal": "per_frame",
+  "slots": [
+    {
+      "name": "slot_0",
+      "display_name": "Pulse",
+      "short_name": "PLS",
+      "color": "#b8863a",
+      "description": "Synthetic band 0"
+    },
+    {
+      "name": "slot_1",
+      "display_name": "Drift",
+      "short_name": "DRF",
+      "color": "#4a8a6a",
+      "description": "Synthetic band 1"
+    },
+    {
+      "name": "slot_2",
+      "display_name": "Strike",
+      "short_name": "STK",
+      "color": "#b85a5a",
+      "description": "Synthetic band 2"
+    },
+    {
+      "name": "slot_3",
+      "display_name": "Shimmer",
+      "short_name": "SHM",
+      "color": "#6a7aaa",
+      "description": "Synthetic band 3"
+    },
+    {
+      "name": "slot_4",
+      "display_name": "Ground",
+      "short_name": "GND",
+      "color": "#8a6a4a",
+      "description": "Synthetic band 4"
+    },
+    {
+      "name": "slot_5",
+      "display_name": "Air",
+      "short_name": "AIR",
+      "color": "#6a9098",
+      "description": "Synthetic band 5"
+    }
+  ],
+  "feature_id_range": [
+    0,
+    999
+  ],
+  "feature_label": "Feature",
+  "spatial_mask_shape": [
+    16,
+    16
+  ],
+  "has_prompts": true,
+  "has_destinations": true,
+  "output_resolution": [
+    512,
+    512
+  ],
+  "control_inputs": [
+    {
+      "name": "slot.feature",
+      "kind": "id",
+      "count": 6,
+      "id_range": [
+        0,
+        999
+      ],
+      "shape": null,
+      "description": "Synthetic feature id per slot (tints nothing; echoed in ACKs)"
+    },
+    {
+      "name": "slot.strength",
+      "kind": "scalar",
+      "count": 6,
+      "id_range": null,
+      "shape": null,
+      "description": "Audio-driven amplitude per slot (lights its band)"
+    },
+    {
+      "name": "slot.spatial_mask",
+      "kind": "mask2d",
+      "count": 6,
+      "id_range": null,
+      "shape": [
+        16,
+        16
+      ],
+      "description": "Accepted for UI parity; the mock renders bands, not masks"
+    },
+    {
+      "name": "prompt.destination",
+      "kind": "text",
+      "count": 2,
+      "id_range": null,
+      "shape": null,
+      "description": "Accepted for UI parity; the mock has no prompt space"
+    }
+  ],
+  "slot_count": 6
+}

@@ -172,7 +172,6 @@ export function useAudioMixer(options: UseAudioMixerOptions = {}): UseAudioMixer
 
     loadedAudioIdRef.current = audioIdToLoad;
     useAudioStore.getState().setUploadPhase('ready');
-    console.log(`[AudioMixer] Loaded ${loadedCount}/${STEMS.length} stems for`, audioIdToLoad);
   }, [getAudioContext]);
 
   // ============================================================================
@@ -283,8 +282,6 @@ export function useAudioMixer(options: UseAudioMixerOptions = {}): UseAudioMixer
       rafIdRef.current = requestAnimationFrame(updateTime);
     };
     rafIdRef.current = requestAnimationFrame(updateTime);
-
-    console.log('[AudioMixer] Playing from', startTime);
   }, [getAudioContext, duration, setCurrentTime, setIsPlaying, stopInternal]);
 
   // ============================================================================
@@ -300,8 +297,6 @@ export function useAudioMixer(options: UseAudioMixerOptions = {}): UseAudioMixer
 
     stopInternal();
     setCurrentTime(position);
-
-    console.log('[AudioMixer] Paused at', position);
   }, [getAudioContext, stopInternal, setCurrentTime]);
 
   // ============================================================================

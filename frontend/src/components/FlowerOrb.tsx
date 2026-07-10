@@ -17,16 +17,13 @@
  * - Activity-driven flutter and core pulse
  */
 
-import { useRef, useMemo, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useRef, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { FRESNEL_SCHLICK, SSS_APPROXIMATION } from '../shaders/shaderUtils';
 import { useAudioActivityStore } from '../stores/useAudioActivityStore';
 import type { AllStems } from '../types/sae';
-
-import { useCanvasLightingStore } from '../stores/useCanvasLightingStore';
-import { FLOWER_COLORS } from '../data/flowerColors';
 
 // =============================================================================
 // Stem Colors
@@ -388,114 +385,7 @@ export function FlowerOrbMesh({
 }
 
 // =============================================================================
-// Main FlowerOrb Component
+// Stem type shared with OrbSystem labeling
 // =============================================================================
 
 export type FlowerStemType = 'bass' | 'drums' | 'vocals' | 'other';
-type FlowerSpaceType = 'latent' | 'prompt';
-
-interface FlowerOrbProps {
-  /** Flower type determines color */
-  type: 'stem' | 'destination';
-  /** Which stem (for stem flowers) */
-  stem?: FlowerStemType;
-  /** Which space (for destination flowers) */
-  space?: FlowerSpaceType;
-  /** Is stem enabled? (for stem flowers) */
-  isEnabled?: boolean;
-  /** Are both destinations configured? (for destination flowers) */
-  isConfigured?: boolean;
-  /** Audio activity (0-1) - drives glow/flutter intensity */
-  activity?: number;
-  /** Transient level (0-1) - triggers flutter */
-  transient?: number;
-  /** Size in pixels */
-  size?: number;
-  /** Video influence (0-1) */
-  videoInfluence?: number;
-  /** Click handler */
-  onClick?: () => void;
-  /** Additional class name */
-  className?: string;
-  /** Optional color override (hex) */
-  colorOverride?: string;
-}
-
-export function FlowerOrb({
-  type,
-  stem,
-  space,
-  isEnabled = false,
-  isConfigured = false,
-  activity = 0,
-  transient = 0,
-  size = 80,
-  videoInfluence = 0.2,
-  onClick,
-  className = '',
-  colorOverride,
-}: FlowerOrbProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Get color based on type (always returns {r, g, b} for shader uniforms)
-  const color = useMemo(() => {
-    if (colorOverride) {
-      // Parse hex string to {r, g, b} in 0-1 range
-      const hex = colorOverride.replace('#', '');
-      return {
-        r: parseInt(hex.slice(0, 2), 16) / 255,
-        g: parseInt(hex.slice(2, 4), 16) / 255,
-        b: parseInt(hex.slice(4, 6), 16) / 255,
-      };
-    }
-    if (type === 'stem' && stem) {
-      return FLOWER_COLORS[stem];
-    } else if (type === 'destination' && space) {
-      return FLOWER_COLORS[space];
-    }
-    return FLOWER_COLORS.other;
-  }, [type, stem, space, colorOverride]);
-
-  // Bloom state based on configuration
-  const isBloomed = type === 'stem' ? isEnabled : isConfigured;
-
-  // Canvas lighting for video sync
-  const canvasDominantColor = useCanvasLightingStore((s) => s.dominantColor);
-  const canvasBrightness = useCanvasLightingStore((s) => s.brightness);
-
-  return (
-    <div
-      className={`flower-orb-container ${className}`}
-      style={{
-        width: size,
-        height: size,
-        cursor: 'pointer',
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <Canvas
-        camera={{ position: [0, 0, 4], fov: 45 }}
-        style={{ background: 'transparent' }}
-        gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
-      >
-        <ambientLight intensity={0.3} />
-        <pointLight position={[3, 4, 3]} intensity={0.6} color="#fff8f0" />
-        <pointLight position={[-3, -1, 2]} intensity={0.3} color="#f0fff8" />
-        <pointLight position={[0, -3, 0]} intensity={0.2} color="#e8f0e8" />
-
-        <FlowerOrbMesh
-          color={color}
-          isBloomedTarget={isBloomed}
-          activity={activity}
-          transient={transient}
-          isHovered={isHovered}
-          canvasDominantColor={canvasDominantColor}
-          canvasBrightness={canvasBrightness}
-          videoInfluence={videoInfluence}
-          onClick={onClick}
-        />
-      </Canvas>
-    </div>
-  );
-}
